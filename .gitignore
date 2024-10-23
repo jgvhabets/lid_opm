@@ -1,3 +1,8 @@
+# ignore folder structure
+data/
+results/
+figures/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
