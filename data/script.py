@@ -7,9 +7,12 @@ import matplotlib.pyplot as plt
 import os
 import re  # For regular expressions to extract numbers
 
+#######################################################
 #################
 ### FUNCTIONS ###
 #################
+#######################################################
+
 
 # Function to check if a channel is filled with zeros
 def check_zero(channel_list, channel_names):
@@ -174,6 +177,10 @@ def plot_combined_components(X_channel, Y_channel, Z_channel, norm_channel, chan
 ### MAIN CODE ###
 #################
 
+#######################################################
+#######################################################
+
+
 # READING THE FILE AND DATAFRAME CREATION 
 file_path = "plfp65/plfp65_rec4_13.11.2024_13-17-33_array1.lvm"
 df = pd.read_csv(file_path, header=22, sep='\t')  ##in df.head() i found out that the header finish at line22
@@ -248,3 +255,5 @@ plot_combined_components(
     channel_num,
     time
 )
+
+print(len(norm_channels))
