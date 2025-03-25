@@ -10,36 +10,17 @@ raw = mne.io.read_raw_kit(file_path, preload=True)
 dat, times = raw[:]
 chnames = raw.ch_names
 data = raw.get_data()
+channel_names = raw.ch_names
+
 
 ###################################################################################
 ###################################################################################
-# I don't know why, but if i read this file it results that there are 128 MEG channels and none of those are empty.
-# Reading the .lvm file both with matlab and python it results there are 192 MEG channels,
-#  and just 60 of those are non-empty.
-# In this way i can't distinguish which are the X, Y, Z components and at the same time 
-# i don't understand the mismatch.
+# It seems that the channel from E20 to E28 have the same periodical pattern. 
+#i'll check if they are exactly the same, so we could maybe consider them as triggers.
+# From E29 to E32 there are periodical pitches, i want to check more in details,
+#maybe some of those are related to the ACC.
 ###################################################################################
-###################################################################################
-'''
-Here i try to visualize the MEG channels, trying to understand what they represent 
-sfreq = 500 #Hz
-lpass = 200 #Hz
-Hpass = 1 #Hz
 
-x_channels = raw.copy().pick_channels(raw.ch_names[0:64])   # MEG 001 - MEG 064 (X)
-y_channels = raw.copy().pick_channels(raw.ch_names[64:128]) # MEG 065 - MEG 128 (Y)
-
-x_data = x_channels.get_data()  # Shape: (64, n_samples)
-y_data = y_channels.get_data()  # Shape: (64, n_samples)
-
-x_channels.plot(duration=5, n_channels=30, show=True, highpass=Hpass, lowpass=lpass, block=True, scalings="auto",title="X-Component MEG Sensors")
-y_channels.plot(duration=5, n_channels=30, show=True, highpass=Hpass, lowpass=lpass, block=True, scalings="auto",title="Y-Component MEG Sensors")
-
-print("X Data Shape:", x_data.shape)
-print("Y Data Shape:", y_data.shape)
-exit()
-'''
-###################################################################################
 
 
 # Print info about the data
@@ -50,48 +31,107 @@ print(f'Sampling freq within .con data: {raw.info['sfreq']}')
 
 print(f'\ndata shape: {dat.shape}, times shape: {times.shape}')
 
-## Frequencies:
+###################################################################################
+###################################################################################
+## EXTRAPOLATION DATA:
+# First we check if there are any bad channels:
 
-sfreq = 500 #Hz
-lpass = 200 #Hz
-Hpass = 1 #Hz
-
-#Setting up band-pass filter from 1 - 40 Hz
-raw.filter(l_freq=Hpass, h_freq=lpass)
-
-#Selecting the channels:
-meg_channels = mne.pick_types(raw.info, meg=True, eeg=False, stim=False, eog=False, misc=False)
-eeg_channels = mne.pick_types(raw.info, meg=False, eeg=True, stim=False, eog=False, misc=False)
-channel_names = raw.ch_names
-
-
+# Check for bad channels in all data
 data = raw.get_data()
 bad_channels = []
-
-##Check if there's any empty channel:
-
-for i, ch_name in enumerate(channel_names):
+for i, ch_name in enumerate(raw.ch_names):
     ch_data = data[i]
     if np.isnan(ch_data).any() or np.isinf(ch_data).any() or np.all(ch_data == 0):
         bad_channels.append(ch_name)
 
-# Mark bad channels
 if bad_channels:
-    print(f"Bad channels detected and excluded: {bad_channels}")
+    print(f"Bad channels detected: {bad_channels}")
     raw.info["bads"].extend(bad_channels)
-    raw = raw.drop_channels(raw.info["bads"])
-
 else:
     print("No bad channels found.")
 
-# Plot raw MEG data
-meg_data = raw.copy().pick(picks=meg_channels)
-meg_data.plot(duration=5, n_channels=30, scalings="auto", title="MEG Channels", block=True, show=True)
+###################################################################################
+# Now we extract all the channels:
+print("\n=== Channel extraction and bad channel detection ===")
+# Extract all channel types first
+meg_channels = mne.pick_types(raw.info, meg=True, eeg=False, stim=False, eog=False, misc=False)
+eeg_channels = mne.pick_types(raw.info, meg=False, eeg=True, stim=False, eog=False, misc=False)
 
-# Plot raw EEG data
-eeg_data = raw.copy().pick(picks=eeg_channels)
-eeg_data.plot(duration=5, n_channels=len(eeg_channels), scalings="auto", title="EEG Channels", block=True, show=True)
+print(f"Found {len(meg_channels)} MEG channels")
+print(f"Found {len(eeg_channels)} EEG channels")
 
+# Let's apply the filters to the MEG and EEG channels only:
+
+## Frequencies:
+sfreq = 500 #Hz
+lpass = 200 #Hz
+Hpass = 1 #Hz
+
+# Create filtered copy for MEG and EEG channels
+raw_filtered = raw.copy()
+
+# Apply filter only to MEG and EEG channels
+print("\n=== Applying filters to MEG and EEG channels ===")
+data_channels = mne.pick_types(raw.info, meg=True, eeg=True, stim=False, eog=False, misc=False)
+raw_filtered.filter(l_freq=Hpass, h_freq=lpass, picks=data_channels)
+
+'''
+TRYING TO CHECK IF THERE'S A SIMILARITY BTWN E20-E28 CHANNELS:
+
+print("\n=== Checking if E20-E28 channels are identical ===")
+# Extract E20-E28 channels
+trigger_group = [f'E{i:02d}' for i in range(20, 29)]
+trigger_data = raw_filtered.copy().pick_channels(trigger_group).get_data()
+
+print("\n=== Checking if E20-E28 channels are identical ===")
+# Extract E20-E28 channels
+trigger_group = [f'E{i:02d}' for i in range(20, 29)]
+trigger_data = raw.copy().pick_channels(trigger_group).get_data()
+
+# Compare each channel with every other channel
+print("\nComparing all channels with each other:")
+for i in range(len(trigger_group)):
+    for j in range(i + 1, len(trigger_group)):  # Compare with channels we haven't compared yet
+        ch1_name = trigger_group[i]
+        ch2_name = trigger_group[j]
+        is_identical = np.array_equal(trigger_data[i], trigger_data[j])
+        print(f"{ch1_name} vs {ch2_name}: {'Identical' if is_identical else 'Different'}")
+
+exit()
+'''
+
+# Get filtered MEG and EEG data
+meg_data = raw_filtered.get_data(picks=meg_channels)
+eeg_data = raw_filtered.get_data(picks=eeg_channels)
+
+# Get unfiltered STIM data
+stim_data = raw.copy().pick_channels(['STI 014']).get_data()
+
+###################################################################################
+###################################################################################
+## PLOT THE CHANNELS:
+
+
+# Plot trigger channel
+trigger_plot = raw.copy().pick_channels(['STI 014'])
+trigger_plot.plot(duration=5, scalings='auto', 
+                 title="Trigger Channel (STI 014)", 
+                 block=True, show=True)
+
+# Plot MEG channels (filtered)
+meg_plot = raw_filtered.copy().pick_types(meg=True)
+meg_plot.plot(duration=5, n_channels=30, 
+              scalings="auto", 
+              title="MEG Channels (filtered)", 
+              block=True, show=True)
+
+# Plot EEG channels (filtered)
+eeg_plot = raw_filtered.copy().pick_types(eeg=True)
+eeg_plot.plot(duration=5, 
+              n_channels=len(eeg_channels), 
+              scalings="auto", 
+              title="EEG Channels (filtered)", 
+              block=True, show=True)
 
 ##############################################
 # !!!!
@@ -105,9 +145,9 @@ group_2 = ["E06", "E07", "E08", "E09", "E10", "E11", "E12", "E13"]
 group_1 = [ch for ch in group_1 if ch in raw.ch_names]
 group_2 = [ch for ch in group_2 if ch in raw.ch_names]
 
-# Extract EEG data for each group
-data_1 = raw.copy().pick_channels(group_1).get_data()
-data_2 = raw.copy().pick_channels(group_2).get_data()
+# Extract filtered EEG data for each group
+data_1 = raw_filtered.copy().pick_channels(group_1).get_data()
+data_2 = raw_filtered.copy().pick_channels(group_2).get_data()
 
 # Ensure shapes match before subtraction
 if data_1.shape == data_2.shape:
