@@ -182,8 +182,14 @@ def plot_combined_components(X_channel, Y_channel, Z_channel, norm_channel, chan
 
 
 # READING THE FILE AND DATAFRAME CREATION 
-file_path = "plfp65/plfp65_rec4_13.11.2024_13-17-33_array1.lvm"
-df = pd.read_csv(file_path, header=22, sep='\t')  ##in df.head() i found out that the header finish at line22
+file_path = "plfp65/plfp65_rec1_13.11.2024_12-51-13_array1.lvm"
+df = pd.read_csv(file_path, header=22, sep='\t')
+
+time = df['X_Value']
+print(len(time))
+print(time[len(time)-1])
+
+exit()
 
 # It seems that the column "Comment" is composed by Nan values, so I decide to remove it from the frame
 df = df.drop(columns=["Comment"])

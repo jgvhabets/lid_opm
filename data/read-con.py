@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Path to your .con file
-file_path = "plfp65/plfp65_rec4.con" #reading the plfp65_rec4.con file
+file_path = "plfp65/plfp65_rec1.con" #reading the plfp65_rec4.con file
 
 # Read the .con file
 raw = mne.io.read_raw_kit(file_path, preload=True)
@@ -50,6 +50,8 @@ if bad_channels:
 else:
     print("No bad channels found.")
 
+
+
 ###################################################################################
 # Now we extract all the channels:
 print("\n=== Channel extraction and bad channel detection ===")
@@ -75,30 +77,6 @@ print("\n=== Applying filters to MEG and EEG channels ===")
 data_channels = mne.pick_types(raw.info, meg=True, eeg=True, stim=False, eog=False, misc=False)
 raw_filtered.filter(l_freq=Hpass, h_freq=lpass, picks=data_channels)
 
-'''
-TRYING TO CHECK IF THERE'S A SIMILARITY BTWN E20-E28 CHANNELS:
-
-print("\n=== Checking if E20-E28 channels are identical ===")
-# Extract E20-E28 channels
-trigger_group = [f'E{i:02d}' for i in range(20, 29)]
-trigger_data = raw_filtered.copy().pick_channels(trigger_group).get_data()
-
-print("\n=== Checking if E20-E28 channels are identical ===")
-# Extract E20-E28 channels
-trigger_group = [f'E{i:02d}' for i in range(20, 29)]
-trigger_data = raw.copy().pick_channels(trigger_group).get_data()
-
-# Compare each channel with every other channel
-print("\nComparing all channels with each other:")
-for i in range(len(trigger_group)):
-    for j in range(i + 1, len(trigger_group)):  # Compare with channels we haven't compared yet
-        ch1_name = trigger_group[i]
-        ch2_name = trigger_group[j]
-        is_identical = np.array_equal(trigger_data[i], trigger_data[j])
-        print(f"{ch1_name} vs {ch2_name}: {'Identical' if is_identical else 'Different'}")
-
-exit()
-'''
 
 # Get filtered MEG and EEG data
 meg_data = raw_filtered.get_data(picks=meg_channels)
@@ -161,10 +139,3 @@ raw_subtracted = mne.io.RawArray(data_subtracted, info)
 
 raw_subtracted.plot(duration=5, n_channels=len(group_1), scalings="auto", title="Subtracted EEG (Group 1 - Group 2)",block=True, show=True)
 
-'''
-# Plot raw data
-#raw.plot(duration=3, n_channels=21, show=True, highpass=Hpass, lowpass=lpass, block=True, scalings="auto")
-
-# Plot sensor locations
-#raw.plot_sensors( show=True, block=True )'
-'''

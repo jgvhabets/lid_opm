@@ -247,9 +247,6 @@ print(f"Found {eeg_data.shape[0]} EEG channels")
 #######################################################################
 ##RAW DATA PLOT:
 
-print("\n=== Plotting Data ===")
-
-# ...existing code...
 
 print("\n=== Plotting Data ===")
 
