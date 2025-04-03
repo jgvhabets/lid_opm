@@ -248,6 +248,8 @@ df = pd.read_csv(lvm_path, header=22, sep='\t')
 all_columns = df.columns.tolist()
 command_signal = df[all_columns[218]].values
 
+
+
 #######################################################################
 ##RAW DATA PLOT:
 
@@ -339,17 +341,6 @@ plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()
 
-'''
-# Plot the command signal
-plt.figure(figsize=(12, 4))
-plt.plot(time, command_signal, 'k-', label='Command Signal')
-plt.title(f'Command Signal - Channel 218')
-plt.xlabel('Time (sec)')
-plt.ylabel('Amplitude')
-plt.grid(True, alpha=0.3)
-plt.legend()
-plt.show()
-'''
 
 ###################################################################################
 ###################################################################################
