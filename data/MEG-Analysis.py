@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+from scipy.interpolate import UnivariateSpline
 
 
 #######################################################
@@ -40,6 +41,20 @@ def calculate_channel_norms(X_channels, Y_channels, Z_channels):
         norms.append(norm)
     
     return norms
+
+# Function to calculate the power spectrum of a signal:
+
+def calculate_power_spectrum(signal):
+    """Calculate FFT and power spectrum of a signal"""
+    # Apply FFT
+    n = len(signal)
+    fft = np.fft.fft(signal) / n  #Normalization
+    freqs = np.fft.fftfreq(n, d=0.002667)  # 375 Hz sampling rate
+    power = np.abs(fft) ** 2  # Power calculation
+    
+    # Get positive frequencies only and double the values to compensate for removing negatives
+    pos_mask = freqs >= 0
+    return freqs[pos_mask], 2 * power[pos_mask]
 
 
 #################
@@ -98,6 +113,23 @@ X_channels_names = X_channels_names[:20]  # Also trim the names to match
 print('After excluding the empty channels ')
 print('we are considering: ', len(X_channels_names), ' channels for each component')
 
+
+# Convert MEG data to picoTesla after extracting channels
+print("\nConverting MEG data to picoTesla...")
+
+# Convert start recording channels to pT
+X_channels_start = [channel * 1e-12 for channel in X_channels_start]
+Y_channels_start = [channel * 1e-12 for channel in Y_channels_start]
+Z_channels_start = [channel * 1e-12 for channel in Z_channels_start]
+
+# Convert last recording channels to pT
+X_channels_last = [channel * 1e-12 for channel in X_channels_last]
+Y_channels_last = [channel * 1e-12 for channel in Y_channels_last]
+Z_channels_last = [channel * 1e-12 for channel in Z_channels_last]
+
+print('Data converted to picoTesla')
+
+
 # Assign a specific color to each component
 component_colors = {
     'X': 'blue',     # Blue for X component
@@ -111,6 +143,11 @@ time_start = df_start["X_Value"]
 time_last = df_last["X_Value"]
 
 #########################################################################
+#################
+###  PLOTS ###
+#################
+#########################################################################
+
 # Now let's normalize the data and plot the channels:
 print("\nCalculating channel norms...")
 norms_start = calculate_channel_norms(X_channels_start, Y_channels_start, Z_channels_start)
@@ -162,5 +199,45 @@ for i in range(n_channels, len(axes)):
     axes[i].set_visible(False)
 
 plt.suptitle('Channel Norms Comparison: plfp65_rec1 vs plfp65_rec11', fontsize=14)
+plt.tight_layout()
+plt.show()
+
+# Create figure for power spectrum comparison
+fig_ps, axes_ps = plt.subplots(n_rows, n_cols, figsize=(20, 15))
+axes_ps = axes_ps.flatten()
+
+# Plot power spectrum for each channel
+for i in range(n_channels):
+    # Calculate power spectrum
+    freqs_start, power_start = calculate_power_spectrum(norms_start[i])
+    freqs_last, power_last = calculate_power_spectrum(norms_last[i])
+    
+    # Plot on log scale
+    axes_ps[i].semilogy(freqs_start, power_start, color='#1f77b4', 
+                        label='plfp65_rec1', linewidth=1.5, alpha=0.7)
+    axes_ps[i].semilogy(freqs_last, power_last, color='#ff7f0e', 
+                        label='plfp65_rec11', linewidth=1.5, alpha=0.7)
+    
+    # Add title and labels
+    axes_ps[i].set_title(f'{X_channels_names[i]}', fontsize=5)
+    axes_ps[i].grid(True, alpha=0.3)
+    
+      # Add legend to first subplot only
+    if i == 0:
+        axes_ps[i].legend()
+    
+    # Add y-label for leftmost subplots
+    if i % n_cols == 0:
+        axes_ps[i].set_ylabel('Power (magnitude²)')
+    
+    # Add x-label for bottom subplots
+    if i >= n_channels - n_cols:
+        axes_ps[i].set_xlabel('Frequency (Hz)')
+
+# Hide unused subplots
+for i in range(n_channels, len(axes_ps)):
+    axes_ps[i].set_visible(False)
+
+plt.suptitle('Power Spectrum Comparison: plfp65_rec1 vs plfp65_rec11', fontsize=14)
 plt.tight_layout()
 plt.show()
