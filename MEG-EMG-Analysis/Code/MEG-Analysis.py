@@ -136,11 +136,11 @@ def plot_component_comparison(channels_start, channels_last, component_name, cha
 # READING THE FILE AND DATAFRAME CREATION:
 
 #file rec1:
-file_path_1 = "plfp65/plfp65_rec1_13.11.2024_12-51-13_array1.lvm"
+file_path_1 = "Data/plfp65_rec1_13.11.2024_12-51-13_array1.lvm"
 df_start = pd.read_csv(file_path_1, header= 22, sep='\t')
 
 # file rec11:
-file_path_11 = "plfp65/plfp65_rec11_13.11.2024_14-18-30_array1.lvm"
+file_path_11 = "Data/plfp65_rec11_13.11.2024_14-18-30_array1.lvm"
 df_last = pd.read_csv(file_path_11, header=22, sep='\t')
 
 # It seems that the column "Comment" is composed by Nan values, so I decide to remove it from the frame
