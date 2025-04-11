@@ -2,8 +2,6 @@
 # The two files have different lengths and different sample frequencies.
 # The .lvm file has a sample frequency of 375 Hz, 
 # while the .con file has a sample frequency of 500 Hz.
-# My idea consists in interpolating the .lvm data to match the .con data (switch from 375 Hz to 500 Hz).
-# Then consider just the number of samples that are common to both files.
 # I still don't find any trigger channel in the .con file.
 
 
