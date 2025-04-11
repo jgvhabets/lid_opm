@@ -6,6 +6,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import mne
 from mne.filter import filter_data
+from mne.time_frequency import Spectrum
+
 
 #######################################################
 #################
@@ -329,3 +331,102 @@ for i in range(n_channels, len(axes_ps)):
 plt.suptitle('Power Spectrum Comparison: plfp65_rec1 vs plfp65_rec11', fontsize=14)
 plt.tight_layout()
 plt.show()
+
+########################################################################
+# Now let's perform frequency band analysis using MNE
+# and plot the results for each channel.
+
+print("\nPerforming frequency band analysis using MNE...")
+
+# Define frequency bands
+freq_bands = {
+    'delta': (0.5, 4),
+    'theta': (4, 8),
+    'alpha': (8, 13),
+    'beta': (13, 30),
+    'gamma': (30, 100)
+}
+
+# Create info object for the data, necessary to use mne functions on the data
+info = mne.create_info(
+    ch_names=X_channels_names,
+    sfreq=375,  # Your sampling frequency
+    ch_types=['mag'] * len(X_channels_names)
+)
+
+# Convert numpy arrays to MNE Raw objects
+raw_start = mne.io.RawArray(np.array(norms_start), info)
+raw_last = mne.io.RawArray(np.array(norms_last), info)
+
+# Create Spectrum objects with 2-second windows
+window_length = 6  # seconds
+samples_per_window = int(375 * window_length)  # 750 samples
+start_time = 100
+spectrum_start = Spectrum(
+    raw_start,
+    tmin=start_time,                    # Start time
+    tmax= start_time + window_length,                 # Full duration
+    fmin=0.5,
+    fmax=100,
+    method='welch',
+    n_fft=samples_per_window,  # 2-second windows
+    n_per_seg=samples_per_window,
+    n_overlap=samples_per_window // 2,  # 50% overlap
+    picks=None,
+    exclude=[],
+    proj=False,
+    remove_dc=True,
+    reject_by_annotation=True,
+    n_jobs=1,
+    verbose=False
+)
+
+spectrum_last = Spectrum(
+    raw_last,
+    tmin=0,
+    tmax=None,
+    fmin=0.5,
+    fmax=100,
+    method='welch',
+    n_fft=samples_per_window,
+    n_per_seg=samples_per_window,
+    n_overlap=samples_per_window // 2,
+    picks=None,
+    exclude=[],
+    proj=False,
+    remove_dc=True,
+    reject_by_annotation=True,
+    n_jobs=1,
+    verbose=False
+)
+# Plot for each channel
+for ch_idx in range(len(X_channels_names)):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Get power spectra data
+    psd_start = spectrum_start.get_data(picks=[ch_idx])
+    psd_last = spectrum_last.get_data(picks=[ch_idx])
+    freqs = spectrum_start.freqs
+    
+    # Plot power spectra
+    ax.semilogy(freqs, psd_start.squeeze(), 
+                color='#1f77b4', label='plfp65_rec1')
+    ax.semilogy(freqs, psd_last.squeeze(), 
+                color='#ff7f0e', label='plfp65_rec11')
+    
+    # Highlight frequency bands
+    for band_name, (low, high) in freq_bands.items():
+        ax.axvspan(low, high, color='gray', alpha=0.3)
+        ax.axvline(x=low, color='black', linewidth=2, alpha=0.4)
+        ax.axvline(x=high, color='black', linewidth=2, alpha=0.4)
+        ax.text((low + high)/2, ax.get_ylim()[1], band_name, 
+                horizontalalignment='center', verticalalignment='bottom')
+    
+    ax.set_title(f'Channel {X_channels_names[ch_idx]} - Power Spectrum')
+    ax.set_xlabel('Frequency (Hz)')
+    ax.set_ylabel('Power Spectral Density')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.show()
