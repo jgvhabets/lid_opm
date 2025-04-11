@@ -69,7 +69,7 @@ def apply_meg_filters(data, sfreq=375):
     Returns:
         filtered_data: Filtered MEG signal
     """
-    # Bandpass filter (0.5-100 Hz)
+    # Bandpass filter (1-100 Hz)
     data_bandpass = filter_data(data, sfreq=sfreq, l_freq=1, h_freq=100, 
                               method='fir', verbose=False)
     
@@ -201,6 +201,9 @@ print('Data converted to picoTesla')
 
 ################################ Filter the data using MNE:
 print("\nApplying filters to MEG data...")
+print("\nBandpass filter (1-100 Hz)")
+print("\nApply notch filters (50 Hz and harmonics)")
+
 
 # Filter start recording channels
 X_channels_start = [apply_meg_filters(channel) for channel in X_channels_start]
@@ -256,17 +259,10 @@ axes = axes.flatten()
 
 # Plot norms for each channel
 for i in range(n_channels):
-    # Calculate means
-    #mean_start = np.mean(norms_start[i])
-    #mean_last = np.mean(norms_last[i])
-    # Plot both norms on the same subplot
+    
     axes[i].plot(time_start, norms_start[i], color='#1f77b4', label='plfp65_rec1', linewidth=1.5, alpha=0.7)
     axes[i].plot(time_last, norms_last[i], color='#ff7f0e', label='plfp65_rec11', linewidth=1.5, alpha=0.7)
 
-    # Plot horizontal lines for means
-    #axes[i].axhline(y=mean_start, color="black", label='plfp65_rec1 mean', linewidth=2.5, linestyle='--',)
-    #axes[i].axhline(y=mean_last, color="dimgray",label='plfp65_rec11 mean', linewidth=2.5, linestyle='--',)
-    
     
     # Add title and labels
     axes[i].set_title(f'Channel {X_channels_names[i]}', fontsize=10)
