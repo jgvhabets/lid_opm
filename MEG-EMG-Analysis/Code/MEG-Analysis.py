@@ -86,7 +86,7 @@ def apply_meg_filters(data, sfreq=375):
     return filtered_data
 
 # Function to create component subplot
-def plot_component_comparison(channels_start, channels_last, component_name, channel_names):
+def plot_component_comparison(channels_start, channels_last, component_name, channel_names, rec1_label, rec11_label):
     # Calculate grid layout
     n_channels = len(channel_names)
     n_cols = 5
@@ -99,9 +99,9 @@ def plot_component_comparison(channels_start, channels_last, component_name, cha
     for i in range(n_channels):
         # Plot both recordings on the same subplot
         axes[i].plot(time_start, channels_start[i], color='#1f77b4', 
-                    label='plfp65_rec1', linewidth=1.5, alpha=0.8)
+                    label=rec1_label, linewidth=1.5, alpha=0.8)
         axes[i].plot(time_last, channels_last[i], color='#ff7f0e', 
-                    label='plfp65_rec11', linewidth=1.5, alpha=0.7)
+                    label=rec11_label, linewidth=1.5, alpha=0.7)
         
         # Add title and labels
         axes[i].set_title(f'Channel {channel_names[i]}', fontsize=10)
@@ -123,7 +123,7 @@ def plot_component_comparison(channels_start, channels_last, component_name, cha
     for i in range(n_channels, len(axes)):
         axes[i].set_visible(False)
     
-    plt.suptitle(f'{component_name} Component Comparison: plfp65_rec1 vs plfp65_rec11', fontsize=14)
+    plt.suptitle(f'{component_name} Component Comparison: {rec1_label} vs {rec11_label}', fontsize=14)
     plt.tight_layout()
     plt.show()
 
@@ -138,12 +138,18 @@ def plot_component_comparison(channels_start, channels_last, component_name, cha
 # READING THE FILE AND DATAFRAME CREATION:
 
 #file rec1:
-file_path_1 = "Data/plfp65_rec1_13.11.2024_12-51-13_array1.lvm"
+file_path_1 = "Data/plfp65_rec3_13.11.2024_13-10-36_array1.lvm"
 df_start = pd.read_csv(file_path_1, header= 22, sep='\t')
 
 # file rec11:
 file_path_11 = "Data/plfp65_rec11_13.11.2024_14-18-30_array1.lvm"
 df_last = pd.read_csv(file_path_11, header=22, sep='\t')
+
+# Extract recording names from file paths
+rec1_name = file_path_1.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec3']
+rec11_name = file_path_11.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec11']
+rec1_label = '_'.join(rec1_name)  # 'plfp65_rec3'
+rec11_label = '_'.join(rec11_name) 
 
 # It seems that the column "Comment" is composed by Nan values, so I decide to remove it from the frame
 df_start = df_start.drop(columns=["Comment"])
@@ -237,9 +243,10 @@ time_last = df_last["X_Value"]
 #########################################################################
 
 # Create separate plots for each component
-plot_component_comparison(X_channels_start, X_channels_last, 'X', X_channels_names)
-plot_component_comparison(Y_channels_start, Y_channels_last, 'Y', X_channels_names)
-plot_component_comparison(Z_channels_start, Z_channels_last, 'Z', X_channels_names)
+plot_component_comparison(X_channels_start, X_channels_last, 'X', X_channels_names, rec1_label, rec11_label)
+plot_component_comparison(Y_channels_start, Y_channels_last, 'Y', X_channels_names, rec1_label, rec11_label)
+plot_component_comparison(Z_channels_start, Z_channels_last, 'Z', X_channels_names, rec1_label, rec11_label)
+
 
 # Now let's normalize the data and plot the channels:
 print("\nCalculating channel norms...")
@@ -260,9 +267,10 @@ axes = axes.flatten()
 # Plot norms for each channel
 for i in range(n_channels):
     
-    axes[i].plot(time_start, norms_start[i], color='#1f77b4', label='plfp65_rec1', linewidth=1.5, alpha=0.7)
-    axes[i].plot(time_last, norms_last[i], color='#ff7f0e', label='plfp65_rec11', linewidth=1.5, alpha=0.7)
-
+    axes[i].plot(time_start, norms_start[i], color='#1f77b4', 
+            label=rec1_label, linewidth=1.5, alpha=0.7)
+    axes[i].plot(time_last, norms_last[i], color='#ff7f0e', 
+            label=rec11_label, linewidth=1.5, alpha=0.7)
     
     # Add title and labels
     axes[i].set_title(f'Channel {X_channels_names[i]}', fontsize=10)
@@ -284,7 +292,7 @@ for i in range(n_channels):
 for i in range(n_channels, len(axes)):
     axes[i].set_visible(False)
 
-plt.suptitle('Channel Norms Comparison: plfp65_rec1 vs plfp65_rec11', fontsize=14)
+plt.suptitle(f'Channel Norms Comparison: {rec1_label} vs {rec11_label}', fontsize=14)
 plt.tight_layout()
 plt.show()
 
@@ -300,9 +308,9 @@ for i in range(n_channels):
     
     # Plot on log scale
     axes_ps[i].semilogy(freqs_start, power_start, color='#1f77b4', 
-                        label='plfp65_rec1', linewidth=1.5, alpha=0.7)
+                    label=rec1_label, linewidth=1.5, alpha=0.7)
     axes_ps[i].semilogy(freqs_last, power_last, color='#ff7f0e', 
-                        label='plfp65_rec11', linewidth=1.5, alpha=0.7)
+                    label=rec11_label, linewidth=1.5, alpha=0.7)
     
     # Add title and labels
     axes_ps[i].set_title(f'{X_channels_names[i]}', fontsize=5)
@@ -324,7 +332,7 @@ for i in range(n_channels):
 for i in range(n_channels, len(axes_ps)):
     axes_ps[i].set_visible(False)
 
-plt.suptitle('Power Spectrum Comparison: plfp65_rec1 vs plfp65_rec11', fontsize=14)
+plt.suptitle(f'Power Spectrum Comparison: {rec1_label} vs {rec11_label}', fontsize=14)
 plt.tight_layout()
 plt.show()
 
@@ -355,7 +363,7 @@ raw_start = mne.io.RawArray(np.array(norms_start), info)
 raw_last = mne.io.RawArray(np.array(norms_last), info)
 
 # Create Spectrum objects with 2-second windows
-window_length = 6  # seconds
+window_length = 2  # seconds
 samples_per_window = int(375 * window_length)  # 750 samples
 start_time = 100
 spectrum_start = Spectrum(
@@ -379,8 +387,8 @@ spectrum_start = Spectrum(
 
 spectrum_last = Spectrum(
     raw_last,
-    tmin=0,
-    tmax=None,
+    tmin=start_time,
+    tmax=start_time + window_length,
     fmin=0.5,
     fmax=100,
     method='welch',
@@ -406,10 +414,9 @@ for ch_idx in range(len(X_channels_names)):
     
     # Plot power spectra
     ax.semilogy(freqs, psd_start.squeeze(), 
-                color='#1f77b4', label='plfp65_rec1')
+            color='#1f77b4', label=rec1_label)
     ax.semilogy(freqs, psd_last.squeeze(), 
-                color='#ff7f0e', label='plfp65_rec11')
-    
+            color='#ff7f0e', label=rec11_label)
     # Highlight frequency bands
     for band_name, (low, high) in freq_bands.items():
         ax.axvspan(low, high, color='gray', alpha=0.3)
