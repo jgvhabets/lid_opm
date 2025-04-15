@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Path to your .con file
-file_path = "plfp65/plfp65_rec1.con" #reading the plfp65_rec4.con file
+file_path = "Data/plfp65_rec4.con" #reading the plfp65_rec4.con file
 
 # Read the .con file
 raw = mne.io.read_raw_kit(file_path, preload=True)
@@ -15,10 +15,8 @@ channel_names = raw.ch_names
 
 ###################################################################################
 ###################################################################################
-# It seems that the channel from E20 to E28 have the same periodical pattern. 
-#i'll check if they are exactly the same, so we could maybe consider them as triggers.
 # From E29 to E32 there are periodical pitches, i want to check more in details,
-#maybe some of those are related to the ACC.
+#maybe some of those are related to the trigger channel.
 ###################################################################################
 
 
@@ -51,7 +49,6 @@ else:
     print("No bad channels found.")
 
 
-
 ###################################################################################
 # Now we extract all the channels:
 print("\n=== Channel extraction and bad channel detection ===")
@@ -66,7 +63,7 @@ print(f"Found {len(eeg_channels)} EEG channels")
 
 ## Frequencies:
 sfreq = 500 #Hz
-lpass = 200 #Hz
+lpass = 100 #Hz
 Hpass = 1 #Hz
 
 # Create filtered copy for MEG and EEG channels
@@ -90,18 +87,6 @@ stim_data = raw.copy().pick_channels(['STI 014']).get_data()
 ## PLOT THE CHANNELS:
 
 
-# Plot trigger channel
-trigger_plot = raw.copy().pick_channels(['STI 014'])
-trigger_plot.plot(duration=5, scalings='auto', 
-                 title="Trigger Channel (STI 014)", 
-                 block=True, show=True)
-
-# Plot MEG channels (filtered)
-meg_plot = raw_filtered.copy().pick_types(meg=True)
-meg_plot.plot(duration=5, n_channels=30, 
-              scalings="auto", 
-              title="MEG Channels (filtered)", 
-              block=True, show=True)
 
 # Plot EEG channels (filtered)
 eeg_plot = raw_filtered.copy().pick_types(eeg=True)
@@ -139,3 +124,16 @@ raw_subtracted = mne.io.RawArray(data_subtracted, info)
 
 raw_subtracted.plot(duration=5, n_channels=len(group_1), scalings="auto", title="Subtracted EEG (Group 1 - Group 2)",block=True, show=True)
 
+# Extract and plot channels E29-E32 (unfiltered)
+channels_to_plot = ['E29', 'E30', 'E31', 'E32']
+raw_subset = raw.copy().pick_channels(channels_to_plot)  # Using raw_filtered instead of raw
+
+# Plot full duration
+raw_subset.plot(
+    duration=raw.times[-1],  # Plot entire duration
+    n_channels=len(channels_to_plot),
+    scalings='auto',
+    title='Channels E29-E32 (Unfiltered)',
+    block=True,
+    show=True
+)
