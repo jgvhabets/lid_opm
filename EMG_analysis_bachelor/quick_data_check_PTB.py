@@ -7,31 +7,37 @@ from seaborn import color_palette
 
 forearm_upperside = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG/test_first_2025-04-07_14-10-04_forearm_upperSide.cnt", preload=True)
 forearm_downside = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG/test_first_2025-04-07_14-23-02_forearm_UnderSide.cnt", preload=True)
-forearm_downside_with_post_proc = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG/test_first_2025-04-07_14-23-02_forearm_UnderSide_exported_with_post_processing.cnt", preload=True)
+test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/PTB_measurement_14.04/Bonato_Federico_2025-04-14_13-02-56.cnt", preload=True)
+#test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/PTB_measurement_14.04/Bonato_Federico_2025-04-14_13-02-56_NO_post_proc.cnt", preload=True)
+
+#test = test.notch_filter(picks=["BIP7", "BIP8"], freqs=50)
 
 import matplotlib
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 
-#channel_names = ["BIP7", "BIP8", "BIP9", "BIP10", "BIP11", "BIP12", "BIP3", "BIP4", "BIP5"]
-channel_names = ["BIP7", "BIP8", "BIP9", "BIP10", "BIP11", "BIP12"]
-location = {"BIP7":"left forearm",
-            "BIP8": "left delt",
-            "BIP9": "right forearm",
-            "BIP10" : "right delt",
-            "BIP11" : "left calf",
-            "BIP12" : "right calf",
+channel_names = ["BIP7", "BIP8", "BIP9", "BIP10", "BIP11", "BIP12", "BIP3", "BIP4", "BIP5", "BIP1", "BIP2", "BIP6"]
+#channel_names = ["BIP7", "BIP8", "BIP9", "BIP10", "BIP11", "BIP12"]
+location = {"BIP7":"right forearm",
+            "BIP8": "right delt",
+            "BIP9": "right calf",
+            "BIP10" : "left forearm",
+            "BIP11" : "left delt",
+            "BIP12" : "left calf",
             "BIP3" : "Accelerometer : x",
             "BIP4" : "Accelerometer : y",
-            "BIP5" : "Accelerometer : z"}
+            "BIP5" : "Accelerometer : z",
+            "BIP1" : "Charité ACC ...",
+            "BIP2" : "Charité ACC ...",
+            "BIP6" : "Charité ACC ..."}
 
-data, times = forearm_downside_with_post_proc[channel_names, :]
-df_upside_with_post = pd.DataFrame(data.T, columns=channel_names)
+data, times = test[channel_names, :]
+test_df = pd.DataFrame(data.T, columns=channel_names)
 
-fig, axs = plt.subplots(3, 3, figsize=(12,8))
+fig, axs = plt.subplots(4, 3, figsize=(12,8))
 axs = axs.ravel()
 for ax, channel in zip(axs, channel_names):
-    ax.plot(times, df_upside_with_post[channel])
+    ax.plot(times, test_df[channel])
     ax.set_title(f"{channel} : signal of {location[channel]}")
 plt.tight_layout()
 plt.show()
@@ -39,11 +45,20 @@ plt.show()
 # loop through the channels , individual plots
 for channel in channel_names:
     plt.figure()
-    plt.plot(times, df_upside_with_post[channel])
+    plt.plot(times, test_df[channel])
     plt.title(f" {channel} : signal of {location[channel]}")
     plt.show()
 
-
+#channel_name = ["BIP7"]
+#data, times = test[channel_name, :]
+#data = data * 10**6
+#test_df = pd.DataFrame(data.T, columns=channel_name)
+#
+#for channel in channel_name:
+#    plt.figure()
+#    plt.plot(times, test_df[channel])
+#    plt.title(f" {channel} : signal of {location[channel]}")
+#    plt.show()
 
 
 
