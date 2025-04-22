@@ -76,7 +76,6 @@ def extract_lvm_data(filepath):
     
     # Get timing and trigger
     time = df["X_Value"].values
-    trigger_lvm = df["MUX_Counter1"].values
     
     meg_data = {
         'X': X_channels_filtered,
@@ -86,7 +85,7 @@ def extract_lvm_data(filepath):
         'channel_names': X_channels_names[:20]
     }
     
-    return meg_data, trigger_lvm, df.shape[0]
+    return meg_data, df.shape[0]
 
 ###### CON DATA ######
 def extract_con_data(filepath):
@@ -116,7 +115,7 @@ def extract_con_data(filepath):
     
     # Apply filters only to EEG channels
     eeg_picks = mne.pick_types(raw.info, meg=False, eeg=True, stim=False, eog=False, misc=False)
-    raw_filtered.filter(l_freq=1, h_freq=200, picks=eeg_picks)
+    raw_filtered.filter(l_freq=25, h_freq=248, picks=eeg_picks)
     
     # Extract EMG data (bipolar) with filtering
     emg_data = {}
@@ -125,12 +124,12 @@ def extract_con_data(filepath):
             # Filter individual channels before subtraction
             ch1 = raw.get_data(picks=[channels[0]])[0]
             ch2 = raw.get_data(picks=[channels[1]])[0]
-            ch1_filtered = apply_filter(ch1, raw.info['sfreq'], 1, 100)
-            ch2_filtered = apply_filter(ch2, raw.info['sfreq'], 1, 100)
+            ch1_filtered = apply_filter(ch1, raw.info['sfreq'], 2, 248)
+            ch2_filtered = apply_filter(ch2, raw.info['sfreq'], 2, 248)
             emg_data[location] = ch1_filtered - ch2_filtered
         else:
             data = raw.get_data(picks=[channels])[0]
-            emg_data[location] = apply_filter(data, raw.info['sfreq'], 1, 100)
+            emg_data[location] = apply_filter(data, raw.info['sfreq'], 2, 248)
     
     # Extract and filter ACC data
     acc_data = {}
@@ -195,7 +194,7 @@ def calculate_meg_norm(meg_data, save_plot=False, lvm_filename=None):
     
     if save_plot and lvm_filename:
         # Create plot/MEG folder structure if it doesn't exist
-        plot_folder = 'plot'
+        plot_folder = '../plot'
         meg_folder = os.path.join(plot_folder, 'MEG')
         if not os.path.exists(plot_folder):
             os.makedirs(plot_folder)
@@ -237,7 +236,7 @@ def calculate_acc_norm(acc_data, save_plot=False, con_filename=None):
     
     if save_plot and con_filename:
         # Create plot/ACC folder structure if it doesn't exist
-        plot_folder = 'plot'
+        plot_folder = '../plot'
         acc_folder = os.path.join(plot_folder, 'ACC')
         if not os.path.exists(plot_folder):
             os.makedirs(plot_folder)
@@ -276,7 +275,7 @@ def plot_emg_channels(emg_data, time_con, save_plot=False, con_filename=None):
 
     if save_plot and con_filename:
         # Create plot/EMG folder structure if it doesn't exist
-        plot_folder = 'plot'
+        plot_folder = '../plot'
         emg_folder = os.path.join(plot_folder, 'EMG')
         if not os.path.exists(plot_folder):
             os.makedirs(plot_folder)
@@ -301,14 +300,15 @@ def plot_emg_channels(emg_data, time_con, save_plot=False, con_filename=None):
 #################
 
 # File paths
-lvm_path = "Data/plfp65_rec4_13.11.2024_13-17-33_array1.lvm"
-con_path = "Data/plfp65_rec4.con"
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+lvm_path = "../Data/plfp65_rec4_13.11.2024_13-17-33_array1.lvm"
+con_path = "../Data/plfp65_rec4.con"
 
 print("=== Extracting Data from Files ===")
 
 # Get LVM data (MEG)
 print("\nExtracting LVM data...")
-meg_data, trigger_lvm, n_samples_lvm = extract_lvm_data(lvm_path)
+meg_data, n_samples_lvm = extract_lvm_data(lvm_path)
 print(f"Found {len(meg_data['X'])} MEG channels")
 
 # Get CON data (EEG, EMG, ACC)
@@ -324,12 +324,9 @@ for i in range(len(eeg_data[0])):
     time_con.append(i*0.002)  # 0.002 sec = 500 Hz
 time_con = np.array(time_con)
 
-
-
 # Get command signal from LVM:
 df = pd.read_csv(lvm_path, header=22, sep='\t')
 all_columns = df.columns.tolist()
-
 
 #######################################################################
 ##RAW DATA PLOT:
@@ -416,17 +413,6 @@ plt.suptitle("Accelerometer Components", fontsize=12)
 plt.tight_layout()
 plt.subplots_adjust(top=0.9)
 plt.show()
-
-# 4. Plot LVM trigger channel
-plt.figure(figsize=(15, 4))
-plt.plot(meg_data['time'], trigger_lvm, color='red', linewidth=1)
-plt.title('LVM Trigger Channel', fontsize=12)
-plt.xlabel('Time (sec)')
-plt.ylabel('Amplitude')
-plt.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.show()
-
 
 ###################################################################################
 ###################################################################################
