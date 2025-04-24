@@ -138,10 +138,10 @@ def extract_con_data(filepath):
         acc_data[axis] = apply_filter(data, raw.info['sfreq'], 2, 48)
     
     # Get trigger and filtered EEG
-    trigger_con = raw.get_data(picks=[trigger_channel])[0]
+    
     eeg_data = raw_filtered.get_data(picks=eeg_picks)
     
-    return emg_data, acc_data, eeg_data, trigger_con, raw.info['sfreq']
+    return emg_data, acc_data, eeg_data, raw.info['sfreq']
 
 ##### MEG norm #####
 
@@ -291,6 +291,41 @@ def plot_emg_channels(emg_data, time_con, save_plot=False, con_filename=None):
         print(f'*** EMG plots saved as {plot_path} ***')
  
 
+def create_time_mask(time_array, t_start, t_end):
+    """Create a boolean mask for time window selection"""
+    return (time_array >= t_start) & (time_array <= t_end)
+
+def synchronize_data(meg_data, emg_data, acc_data, eeg_data, time, time_con, Tzero, Tfinal):
+    """Synchronize and process data within the specified time window"""
+    
+    # Create time masks for both files
+    lvm_mask = create_time_mask(time, Tzero, Tfinal)
+    con_mask = create_time_mask(time_con, Tzero, Tfinal)
+    
+    # Create synchronized data dictionary
+    sync_data = {
+        'time_window': {
+            'start': Tzero,
+            'end': Tfinal
+        },
+        'meg': {
+            'time': time,
+            'time_mask': lvm_mask,
+            'X': meg_data['X'],
+            'Y': meg_data['Y'],
+            'Z': meg_data['Z']
+        },
+        'con': {
+            'time': time_con,
+            'time_mask': con_mask,
+            'emg': emg_data,
+            'acc': acc_data,
+            'eeg': eeg_data
+        }
+    }
+    
+    return sync_data
+
 #######################################################################
 #######################################################################
 
@@ -313,7 +348,7 @@ print(f"Found {len(meg_data['X'])} MEG channels")
 
 # Get CON data (EEG, EMG, ACC)
 print("\nExtracting CON data...")
-emg_data, acc_data, eeg_data, trigger_con, sfreq = extract_con_data(con_path)
+emg_data, acc_data, eeg_data, sfreq = extract_con_data(con_path)
 print(f"Found {len(emg_data)} EMG locations")
 print(f"Found {len(acc_data)} ACC axes")
 print(f"Found {eeg_data.shape[0]} EEG channels")
@@ -327,6 +362,53 @@ time_con = np.array(time_con)
 # Get command signal from LVM:
 df = pd.read_csv(lvm_path, header=22, sep='\t')
 all_columns = df.columns.tolist()
+
+#########################################################
+#### SYNCHRONIZATION BETWEEN LVM AND CON FILES ####
+#########################################################
+## Let's select the trigger channel from LVM and CON files:
+
+# LVM trigger channel
+time = df["X_Value"].values
+trigger_lvm = df["A16"].values
+
+# CON trigger channel
+raw = mne.io.read_raw_kit(con_path, preload=True)
+trigger_con = raw.get_data(picks=['E29'])[0] * (-1)
+
+# For LVM trigger
+max_idx_lvm = np.argmax(trigger_lvm)
+Tzero = time[max_idx_lvm]
+print(f"\nLVM trigger max at time: {Tzero:.3f} seconds")
+
+# For CON trigger
+max_idx_con = np.argmax(trigger_con)
+max_time_con = time_con[max_idx_con]
+print(f"CON trigger max at time: {max_time_con:.3f} seconds")
+
+# Find all peaks above 2.5 amplitude
+peak_indices = np.where(trigger_con > 2.5)[0]
+last_peak_idx = peak_indices[-1]  # Get the last peak index
+Tfinal = time_con[last_peak_idx]
+
+print(f"\nLast peak (>2.5) in CON trigger at time: {Tfinal:.3f} seconds")
+print("\n=== Synchronizing Data ===")
+
+sync_data = synchronize_data(
+    meg_data, emg_data, acc_data, eeg_data,
+    time, time_con, Tzero, Tfinal
+)
+
+'''
+Now we can access synchronized data like this:
+For MEG data in the time window:
+meg_time_window = sync_data['meg']['time'][sync_data['meg']['time_mask']]
+meg_x_window = sync_data['meg']['X'][sync_data['meg']['time_mask']]
+
+For CON data in the time window:
+con_time_window = sync_data['con']['time'][sync_data['con']['time_mask']]
+emg_window = {k: v[sync_data['con']['time_mask']] for k, v in sync_data['con']['emg'].items()}
+'''
 
 #######################################################################
 ##RAW DATA PLOT:
