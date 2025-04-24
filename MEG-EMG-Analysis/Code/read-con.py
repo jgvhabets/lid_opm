@@ -3,8 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Path to your .con file
-file_path = "Data/plfp65_rec4.con" #reading the plfp65_rec4.con file
-
+file_path = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/plfp65_rec4.con"
 # Read the .con file
 raw = mne.io.read_raw_kit(file_path, preload=True)
 dat, times = raw[:]
@@ -25,8 +24,7 @@ channel_names = raw.ch_names
 print(raw.info)
 print(f'Channel names within .con data, (n={len(raw.ch_names)}): {raw.ch_names}')
 print(f'Timestamps within .con data (n={len(raw.times)}): {raw.times}')
-print(f'Sampling freq within .con data: {raw.info['sfreq']}')
-
+print(f'Sampling freq within .con data: {raw.info["sfreq"]}')  
 print(f'\ndata shape: {dat.shape}, times shape: {times.shape}')
 
 ###################################################################################

@@ -93,7 +93,7 @@ def plot_component_comparison(channels_start, channels_last, component_name, cha
     n_rows = (n_channels + n_cols - 1) // n_cols
     
     # Create figure and subplots
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 15))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 15), layout="constrained")
     axes = axes.flatten()
     
     for i in range(n_channels):
@@ -104,7 +104,7 @@ def plot_component_comparison(channels_start, channels_last, component_name, cha
                     label=rec11_label, linewidth=1.5, alpha=0.7)
         
         # Add title and labels
-        axes[i].set_title(f'Channel {channel_names[i]}', fontsize=10)
+        axes[i].set_title(f'Channel {channel_names[i]}', fontsize=7)
         axes[i].grid(True, alpha=0.3)
         
         # Add legend only for first subplot
@@ -123,7 +123,7 @@ def plot_component_comparison(channels_start, channels_last, component_name, cha
     for i in range(n_channels, len(axes)):
         axes[i].set_visible(False)
     
-    plt.suptitle(f'{component_name} Component Comparison: {rec1_label} vs {rec11_label}', fontsize=14)
+    plt.suptitle(f'{component_name} Component Comparison: {rec1_label} vs {rec11_label}', fontsize=8)
     plt.tight_layout()
     plt.show()
 
@@ -138,11 +138,11 @@ def plot_component_comparison(channels_start, channels_last, component_name, cha
 # READING THE FILE AND DATAFRAME CREATION:
 
 #file rec1:
-file_path_1 = "Data/plfp65_rec3_13.11.2024_13-10-36_array1.lvm"
+file_path_1 = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/plfp65_rec3_13.11.2024_13-10-36_array1.lvm"
 df_start = pd.read_csv(file_path_1, header= 22, sep='\t')
 
 # file rec11:
-file_path_11 = "Data/plfp65_rec11_13.11.2024_14-18-30_array1.lvm"
+file_path_11 = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/plfp65_rec11_13.11.2024_14-18-30_array1.lvm"
 df_last = pd.read_csv(file_path_11, header=22, sep='\t')
 
 # Extract recording names from file paths
@@ -186,9 +186,30 @@ Z_channels_last = Z_channels_last[:20]
 
 X_channels_names = X_channels_names[:20]  # Also trim the names to match
 
-print('After excluding the empty channels ')
-print('we are considering: ', len(X_channels_names), ' channels for each component')
+# Exclude channels 5 and 13 from all components
+channels_to_exclude = [4, 12]
+print("\nExcluding channels 5 and 13 from all components...")
 
+# Helper function to remove specific indices from lists
+def remove_channels(channel_list, indices):
+        return [channel for i, channel in enumerate(channel_list) if i not in indices]
+    
+
+# Remove channels from start recording
+X_channels_start = remove_channels(X_channels_start, channels_to_exclude)
+Y_channels_start = remove_channels(Y_channels_start, channels_to_exclude)
+Z_channels_start = remove_channels(Z_channels_start, channels_to_exclude)
+
+# Remove channels from last recording
+X_channels_last = remove_channels(X_channels_last, channels_to_exclude)
+Y_channels_last = remove_channels(Y_channels_last, channels_to_exclude)
+Z_channels_last = remove_channels(Z_channels_last, channels_to_exclude)
+
+# Remove channel names
+X_channels_names = remove_channels(X_channels_names, channels_to_exclude)
+
+print(f'After excluding channels {channels_to_exclude}')
+print('we are considering: ', len(X_channels_names), ' channels for each component')
 
 # Convert MEG data to picoTesla after extracting channels
 print("\nConverting MEG data to picoTesla...")
@@ -261,7 +282,7 @@ n_cols = 5
 n_rows = (n_channels + n_cols - 1) // n_cols
 
 # Create figure
-fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 15))
+fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 15), layout="constrained")
 axes = axes.flatten()
 
 # Plot norms for each channel
@@ -273,7 +294,7 @@ for i in range(n_channels):
             label=rec11_label, linewidth=1.5, alpha=0.7)
     
     # Add title and labels
-    axes[i].set_title(f'Channel {X_channels_names[i]}', fontsize=10)
+    axes[i].set_title(f'Channel {X_channels_names[i]}', fontsize=7)
     axes[i].grid(True, alpha=0.3)
     
     # Add legend only for the first subplot
@@ -292,12 +313,12 @@ for i in range(n_channels):
 for i in range(n_channels, len(axes)):
     axes[i].set_visible(False)
 
-plt.suptitle(f'Channel Norms Comparison: {rec1_label} vs {rec11_label}', fontsize=14)
+plt.suptitle(f'Channel Norms Comparison: {rec1_label} vs {rec11_label}', fontsize=8)
 plt.tight_layout()
 plt.show()
 
 # Create figure for power spectrum comparison
-fig_ps, axes_ps = plt.subplots(n_rows, n_cols, figsize=(20, 15))
+fig_ps, axes_ps = plt.subplots(n_rows, n_cols, figsize=(20, 15), layout="constrained")
 axes_ps = axes_ps.flatten()
 
 # Plot power spectrum for each channel
@@ -332,7 +353,7 @@ for i in range(n_channels):
 for i in range(n_channels, len(axes_ps)):
     axes_ps[i].set_visible(False)
 
-plt.suptitle(f'Power Spectrum Comparison: {rec1_label} vs {rec11_label}', fontsize=14)
+plt.suptitle(f'Power Spectrum Comparison: {rec1_label} vs {rec11_label}', fontsize=8)
 plt.tight_layout()
 plt.show()
 
@@ -361,6 +382,7 @@ info = mne.create_info(
 # Convert numpy arrays to MNE Raw objects
 raw_start = mne.io.RawArray(np.array(norms_start), info)
 raw_last = mne.io.RawArray(np.array(norms_last), info)
+
 
 # Create Spectrum objects with 2-second windows
 window_length = 2  # seconds
@@ -405,7 +427,7 @@ spectrum_last = Spectrum(
 )
 # Plot for each channel
 for ch_idx in range(len(X_channels_names)):
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(10, 6), layout="constrained")
     
     # Get power spectra data
     psd_start = spectrum_start.get_data(picks=[ch_idx])
