@@ -10,7 +10,7 @@ forearm_downside = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/d
 test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/PTB_measurement_14.04/Bonato_Federico_2025-04-14_13-02-56.cnt", preload=True)
 #test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/PTB_measurement_14.04/Bonato_Federico_2025-04-14_13-02-56_NO_post_proc.cnt", preload=True)
 
-#test = test.notch_filter(picks=["BIP7", "BIP8"], freqs=50)
+test = test.notch_filter(picks=["BIP7", "BIP8"], freqs=50)
 
 import matplotlib
 matplotlib.use('Qt5Agg')
