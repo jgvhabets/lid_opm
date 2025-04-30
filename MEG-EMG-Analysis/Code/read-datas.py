@@ -2,7 +2,7 @@
 # The two files have different lengths and different sample frequencies.
 # The .lvm file has a sample frequency of 375 Hz, 
 # while the .con file has a sample frequency of 500 Hz.
-# I still don't find any trigger channel in the .con file.
+
 
 
 #################
@@ -43,7 +43,7 @@ def check_zero(channel_list, channel_names):
 
 ###### LVM DATA ######
 def extract_lvm_data(filepath):
-    """Extract MEG and trigger data from .lvm file"""
+    """Extract MEG data from .lvm file"""
     # Read the LVM file
     df = pd.read_csv(filepath, header=22, sep='\t')
     
@@ -74,7 +74,7 @@ def extract_lvm_data(filepath):
     Y_channels_filtered = [apply_filter(ch, sfreq_lvm, 1, 100) * conversion_factor for ch in Y_channels]
     Z_channels_filtered = [apply_filter(ch, sfreq_lvm, 1, 100) * conversion_factor for ch in Z_channels]
     
-    # Get timing and trigger
+    # Get timing
     time = df["X_Value"].values
     
     meg_data = {
@@ -89,7 +89,7 @@ def extract_lvm_data(filepath):
 
 ###### CON DATA ######
 def extract_con_data(filepath):
-    """Extract EEG, EMG, ACC and trigger data from .con file"""
+    """Extract EEG, EMG and ACC data from .con file"""
     # Read the .con file
     raw = mne.io.read_raw_kit(filepath, preload=True)
 
@@ -137,11 +137,75 @@ def extract_con_data(filepath):
         data = raw.get_data(picks=[channel])[0]
         acc_data[axis] = apply_filter(data, raw.info['sfreq'], 2, 48)
     
-    # Get trigger and filtered EEG
+    # Get filtered EEG
     
     eeg_data = raw_filtered.get_data(picks=eeg_picks)
     
     return emg_data, acc_data, eeg_data, raw.info['sfreq']
+
+##### MEG PLOT #####
+
+def plot_meg_components(meg_data, time_array, save_plot=False, lvm_filename=None):
+    """
+    Plot all channels for each MEG component (X, Y, Z) in separate figures with distinct colors.
+    
+    Parameters:
+    -----------
+    meg_data : dict
+        Dictionary containing MEG data with 'X', 'Y', 'Z' components
+    time_array : array-like
+        Time points for x-axis
+    save_plot : bool, optional
+        Whether to save the plots to files
+    lvm_filename : str, optional
+        Original filename used for saving plots
+    """
+    import matplotlib.cm as cm
+    
+    # Create a colormap for channels that will be consistent across components
+    n_channels = len(meg_data['X'])
+    colors = cm.rainbow(np.linspace(0, 1, n_channels))
+    
+    # Component labels
+    components = {
+        'X': 'X Component',
+        'Y': 'Y Component',
+        'Z': 'Z Component'
+    }
+    
+    # Create plots for each component
+    for component, label in components.items():
+        plt.figure(figsize=(15, 8))
+        
+        # Plot all channels for this component
+        for i, channel in enumerate(meg_data[component]):
+            plt.plot(time_array, channel, color=colors[i], 
+                    linewidth=1, label=f'Channel {i+1}')
+        
+        plt.title(f'MEG {label} - All Channels', fontsize=12)
+        plt.xlabel('Time (sec)')
+        plt.ylabel('Amplitude (pT)')
+        plt.grid(True, alpha=0.3)
+        
+        # Add legend with smaller font and outside plot
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', 
+                  fontsize=8, ncol=2)
+        
+        plt.tight_layout()
+        
+        # Save plot if requested
+        if save_plot and lvm_filename:
+            plot_folder = '../plot'
+            meg_folder = os.path.join(plot_folder, 'MEG')
+            os.makedirs(meg_folder, exist_ok=True)
+            
+            base_filename = os.path.splitext(os.path.basename(lvm_filename))[0]
+            plot_path = os.path.join(meg_folder, 
+                                   f'{base_filename}_meg_{component.lower()}.png')
+            plt.savefig(plot_path, bbox_inches='tight')
+            print(f'*** MEG {component} component plot saved as {plot_path} ***')
+        
+        plt.show()
 
 ##### MEG norm #####
 
@@ -416,45 +480,29 @@ emg_window = {k: v[sync_data['con']['time_mask']] for k, v in sync_data['con']['
 
 print("\n=== Plotting Data ===")
 
-# Define colors for components
-component_colors = {
-    'X': 'blue',
-    'Y': 'green',
-    'Z': 'red'
-}
-
 # 1. Plot MEG components (X, Y, Z) in subplots
-for component in ['X', 'Y', 'Z']:
-    n_channels = len(meg_data[component])
-    n_cols = 5
-    n_rows = (n_channels + n_cols - 1) // n_cols
-    
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 12), sharex=True)
-    axes = axes.flatten()
-    
-    for i, channel in enumerate(meg_data[component]):
-        # Use full time series instead of just first 1000 samples
-        axes[i].plot(meg_data['time'], channel, 
-                    color=component_colors[component], linewidth=1)
-        axes[i].set_title(f'{meg_data["channel_names"][i]}', fontsize=10)
-        axes[i].grid(True, alpha=0.3)
-        
-        if i % n_cols == 0:
-            axes[i].set_ylabel('Amplitude')
-    
-    # Hide unused subplots
-    for i in range(n_channels, len(axes)):
-        axes[i].set_visible(False)
-    
-    # Add x-label only for bottom plots
-    for i in range(n_cols * (n_rows-1), n_cols * n_rows):
-        if i < len(axes) and axes[i].get_visible():
-            axes[i].set_xlabel('Time (sec)')
-    
-    plt.suptitle(f"MEG {component} Component - Individual Channels", fontsize=12)
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.95)
-    plt.show()
+plot_meg_components(meg_data, meg_data['time'], save_plot=True, lvm_filename=lvm_path)
+
+print('Considering the plotted raw data, it is considerable to exclude the channels 5 and 13')
+
+# Exclude channels 5 and 13 from all components
+channels_to_exclude = [4, 12]  # Python uses 0-based indexing
+print("\nExcluding channels 5 and 13 from all components...")
+
+def remove_channels(channel_list, indices):
+    return [channel for i, channel in enumerate(channel_list) if i not in indices]
+
+# Remove channels from MEG data
+meg_data['X'] = remove_channels(meg_data['X'], channels_to_exclude)
+meg_data['Y'] = remove_channels(meg_data['Y'], channels_to_exclude)
+meg_data['Z'] = remove_channels(meg_data['Z'], channels_to_exclude)
+meg_data['channel_names'] = remove_channels(meg_data['channel_names'], channels_to_exclude)
+
+print(f"Number of channels after exclusion: {len(meg_data['X'])}")
+
+# Continue with your existing plotting code
+plot_meg_components(meg_data, meg_data['time'], save_plot=True, lvm_filename=lvm_path)
+
 
 # 2. Plot EMG channels in subplots
 fig, axes = plt.subplots(2, 3, figsize=(15, 8), sharex=True)
@@ -512,5 +560,3 @@ print("\n=== MEG normalized plots are saved in 'MEG' folder ===")
 print("\n=== Processing ACC Components ===")
 acc_norm = calculate_acc_norm(acc_data, save_plot=True, con_filename=con_path)
 print("\n=== ACC normalized plot is saved in 'ACC' folder ===")
-
-plot_emg_channels(emg_data, time_con, save_plot=True, con_filename=con_path)
