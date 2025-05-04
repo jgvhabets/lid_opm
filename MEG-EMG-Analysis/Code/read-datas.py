@@ -209,7 +209,7 @@ def plot_meg_components(meg_data, time_array, save_plot=False, lvm_filename=None
 
 ##### MEG norm #####
 
-def calculate_meg_norm(meg_data, save_plot=False, lvm_filename=None):
+def calculate_meg_norm(meg_data):
     """Calculate and plot the norm of MEG X, Y, Z components"""
     n_channels = len(meg_data['X'])
     norm_channels = []
@@ -223,61 +223,11 @@ def calculate_meg_norm(meg_data, save_plot=False, lvm_filename=None):
         )
         norm_channels.append(norm)
     
-    # Plot setup
-    n_cols = 5
-    n_rows = (n_channels + n_cols - 1) // n_cols
-    
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 12), sharex=True)
-    axes = axes.flatten()
-    
-    # Plot each norm
-    for i in range(n_channels):
-        axes[i].plot(meg_data['time'], norm_channels[i], 
-                    color='purple', linewidth=1)
-        channel_num = ''.join(filter(str.isdigit, meg_data['channel_names'][i]))
-        norm_name = f"Norm{channel_num}"
-        
-        axes[i].set_title(norm_name, fontsize=10)
-        axes[i].grid(True, alpha=0.3)
-        
-        if i % n_cols == 0:
-            axes[i].set_ylabel('Magnitude')
-    
-    # Hide unused subplots
-    for i in range(n_channels, len(axes)):
-        axes[i].set_visible(False)
-    
-    # Add x-labels
-    for i in range(n_cols * (n_rows-1), n_cols * n_rows):
-        if i < len(axes) and axes[i].get_visible():
-            axes[i].set_xlabel('Time (sec)')
-    
-    plt.suptitle("MEG Vector Norm - Individual Channels", fontsize=12)
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.95)
-    
-    if save_plot and lvm_filename:
-        # Create plot/MEG folder structure if it doesn't exist
-        plot_folder = '../plot'
-        meg_folder = os.path.join(plot_folder, 'MEG')
-        if not os.path.exists(plot_folder):
-            os.makedirs(plot_folder)
-        if not os.path.exists(meg_folder):
-            os.makedirs(meg_folder)
-            
-        # Extract filename without path and extension
-        base_filename = os.path.splitext(os.path.basename(lvm_filename))[0]
-        
-        # Save plot with filename in plot/MEG folder
-        plot_path = os.path.join(meg_folder, f'{base_filename}_norm.png')
-        plt.savefig(plot_path)
-        print(f'*** MEG norm plot saved as {plot_path} ***')
-    
     return norm_channels
 
 ###### ACC norm ######
 
-def calculate_acc_norm(acc_data, save_plot=False, con_filename=None):
+def calculate_acc_norm(acc_data):
     """Calculate and plot the norm of accelerometer X, Y, Z components"""
     # Calculate norm
     norm = np.sqrt(
@@ -285,35 +235,6 @@ def calculate_acc_norm(acc_data, save_plot=False, con_filename=None):
         acc_data['y']**2 + 
         acc_data['z']**2
     )
-    
-    # Create figure
-    fig, ax = plt.subplots(figsize=(15, 5))
-    
-    # Plot norm using time_con
-    ax.plot(time_con, norm, color='purple', linewidth=1)
-    ax.set_title('Accelerometer Vector Norm', fontsize=12)
-    ax.set_xlabel('Time (sec)')
-    ax.set_ylabel('Magnitude')
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    
-    if save_plot and con_filename:
-        # Create plot/ACC folder structure if it doesn't exist
-        plot_folder = '../plot'
-        acc_folder = os.path.join(plot_folder, 'ACC')
-        if not os.path.exists(plot_folder):
-            os.makedirs(plot_folder)
-        if not os.path.exists(acc_folder):
-            os.makedirs(acc_folder)
-            
-        # Extract filename without path and extension
-        base_filename = os.path.splitext(os.path.basename(con_filename))[0]
-        
-        # Save plot with filename in plot/ACC folder
-        plot_path = os.path.join(acc_folder, f'{base_filename}_acc_norm.png')
-        plt.savefig(plot_path)
-        print(f'*** ACC norm plot saved as {plot_path} ***')
     
     return norm
 
@@ -442,52 +363,64 @@ trigger_con = raw.get_data(picks=['E29'])[0] * (-1)
 
 # For LVM trigger
 max_idx_lvm = np.argmax(trigger_lvm)
-Tzero = time[max_idx_lvm]
-print(f"\nLVM trigger max at time: {Tzero:.3f} seconds")
+t_zero_lvm = time[max_idx_lvm]
+print(f"\nLVM trigger max at time: {t_zero_lvm:.3f} seconds")
 
 # For CON trigger
 max_idx_con = np.argmax(trigger_con)
-max_time_con = time_con[max_idx_con]
-print(f"CON trigger max at time: {max_time_con:.3f} seconds")
+t_zero_con = time_con[max_idx_con]
+print(f"CON trigger max at time: {t_zero_con:.3f} seconds")
 
-# Find all peaks above 2.5 amplitude
-peak_indices = np.where(trigger_con > 2.5)[0]
-last_peak_idx = peak_indices[-1]  # Get the last peak index
-Tfinal = time_con[last_peak_idx]
+# Apply time shift to CON data (shift back by 0.15 seconds)
+time_shift = 0.174
+t_zero_con_shifted = t_zero_con + time_shift
 
-print(f"\nLast peak (>2.5) in CON trigger at time: {Tfinal:.3f} seconds")
-print("\n=== Synchronizing Data ===")
+# Create relative time arrays (align triggers to t=0)
+time_lvm_rel = time - t_zero_lvm
+time_con_rel = time_con - t_zero_con_shifted  # Use shifted time
 
-sync_data = synchronize_data(
-    meg_data, emg_data, acc_data, eeg_data,
-    time, time_con, Tzero, Tfinal
-)
+# Define duration for analysis (5 minutes = 300 seconds)
+duration = 300
+
+# Create masks for 300s after trigger
+lvm_mask = (time_lvm_rel >= 0) & (time_lvm_rel <= duration)
+con_mask = (time_con_rel >= 0) & (time_con_rel <= duration)
+
+print(f"""
+SYNCHRONIZATION:
+---------------
+- LVM trigger peak: {t_zero_lvm:.3f} s
+- CON trigger peak: {t_zero_con:.3f} s
+- Applied time_shift: {time_shift:.3f} s (empirically determined)
+- Analysis window: 0 to {duration} seconds after trigger
+""")
 
 '''
-Now we can access synchronized data like this:
-For MEG data in the time window:
-meg_time_window = sync_data['meg']['time'][sync_data['meg']['time_mask']]
-meg_x_window = sync_data['meg']['X'][sync_data['meg']['time_mask']]
-
-For CON data in the time window:
-con_time_window = sync_data['con']['time'][sync_data['con']['time_mask']]
-emg_window = {k: v[sync_data['con']['time_mask']] for k, v in sync_data['con']['emg'].items()}
+SYNCHRONIZATION SUMMARY:
+-----------------------
+1. Trigger Alignment:
+   - Found peak times in both LVM and CON triggers
+   - LVM trigger peak at {t_zero_lvm:.3f} seconds
+   - CON trigger peak at {t_zero_con:.3f} seconds
+   
+2. Time Shift Adjustment:
+   - Observed a consistent delay between triggers
+   - Empirically determined time_shift = 0.174 seconds by visual inspection
+   - Applied shift to CON data to align with LVM trigger
+   
+3. Time Window Selection:
+   - Set t=0 at trigger peaks
+   - Defined analysis window: 0 to 300 seconds after trigger
+   - Created boolean masks for both datasets
+   
+4. Data Access:
+   To work with synchronized data, use the mask arrays:
+   - For MEG: data[lvm_mask]
+   - For EMG/ACC/EEG: data[con_mask]
 '''
-
-#######################################################################
-##RAW DATA PLOT:
-
-
-print("\n=== Plotting Data ===")
-
-# 1. Plot MEG components (X, Y, Z) in subplots
-plot_meg_components(meg_data, meg_data['time'], save_plot=True, lvm_filename=lvm_path)
-
-print('Considering the plotted raw data, it is considerable to exclude the channels 5 and 13')
-
-# Exclude channels 5 and 13 from all components
+### Removing bad channels ###
 channels_to_exclude = [4, 12]  # Python uses 0-based indexing
-print("\nExcluding channels 5 and 13 from all components...")
+print("\nExcluding channels 5 and 13 from all MEG components...")
 
 def remove_channels(channel_list, indices):
     return [channel for i, channel in enumerate(channel_list) if i not in indices]
@@ -498,63 +431,62 @@ meg_data['Y'] = remove_channels(meg_data['Y'], channels_to_exclude)
 meg_data['Z'] = remove_channels(meg_data['Z'], channels_to_exclude)
 meg_data['channel_names'] = remove_channels(meg_data['channel_names'], channels_to_exclude)
 
-print(f"Number of channels after exclusion: {len(meg_data['X'])}")
 
-# Continue with your existing plotting code
-plot_meg_components(meg_data, meg_data['time'], save_plot=True, lvm_filename=lvm_path)
+#######################################################################
+##RAW DATA PLOT:
+#######################################################################
 
+print("\n=== Plotting Raw Data ===")
 
-# 2. Plot EMG channels in subplots
-fig, axes = plt.subplots(2, 3, figsize=(15, 8), sharex=True)
-axes = axes.flatten()
+# Create figure with 3 subplots
+fig, axes = plt.subplots(3, 1, figsize=(15, 12), sharex=True)
 
-for i, (location, data) in enumerate(emg_data.items()):
-    axes[i].plot(time_con, data, 'black', linewidth=1)  # Removed [:1000] to show all data
-    axes[i].set_title(f'EMG {location}', fontsize=10)
-    axes[i].grid(True, alpha=0.3)
-    axes[i].set_ylabel('Amplitude')
-    axes[i].set_xlabel('Time (sec)')
+# Create colormap for MEG channels
+n_channels = len(meg_data['X'])
+colors = plt.cm.rainbow(np.linspace(0, 1, n_channels))
 
+# Create list of channel numbers (excluding 5 and 13)
+channel_numbers = [i+1 for i in range(20) if i not in channels_to_exclude]
 
-# Hide the last unused subplot
-axes[-1].set_visible(False)
+# 1. First subplot: MEG X channels
+for i, channel in enumerate(meg_data['X']):
+    axes[0].plot(time_lvm_rel[lvm_mask], channel[lvm_mask], 
+                 color=colors[i], linewidth=0.6, label=f'Channel {channel_numbers[i]}')
+axes[0].set_title('MEG X Component - All Channels')
+axes[0].set_ylabel('Amplitude (pT)')
+axes[0].grid(True, alpha=0.3)
+axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
 
-plt.suptitle("EMG Channels", fontsize=12)
+# 2. Second subplot: MEG normalized channels
+meg_norms = calculate_meg_norm(meg_data)
+for i, norm in enumerate(meg_norms):
+    axes[1].plot(time_lvm_rel[lvm_mask], norm[lvm_mask], 
+                 color=colors[i], linewidth=0.6, label=f'Channel {channel_numbers[i]}')
+axes[1].set_title('MEG Vector Norm - All Channels')
+axes[1].set_ylabel('Magnitude')
+axes[1].grid(True, alpha=0.3)
+
+# 3. Third subplot: ACC normalized magnitude
+acc_norm = calculate_acc_norm(acc_data)
+axes[2].plot(time_con_rel[con_mask], acc_norm[con_mask], 
+             color='purple', linewidth=1, label='ACC magnitude')
+axes[2].set_title('Accelerometer Vector Norm')
+axes[2].set_xlabel('Time from Trigger (s)')
+axes[2].set_ylabel('Magnitude')
+axes[2].grid(True, alpha=0.3)
+axes[2].legend()
+
+plt.suptitle('Synchronized MEG and ACC Data', fontsize=14)
 plt.tight_layout()
 plt.subplots_adjust(top=0.9)
 plt.show()
+exit()
 
-plot_emg_channels(emg_data, time_con, save_plot=True, con_filename=con_path)
-print("\n=== EMG plots are saved in 'plot/EMG' folder ===")
-
-
-# 3. Plot ACC components in subplots
-fig, axes = plt.subplots(1, 3, figsize=(15, 4), sharex=True)
-
-for i, (axis, data) in enumerate(acc_data.items()):
-    axes[i].plot(time_con, data, linewidth=1)  # Removed [:1000] to show all data
-    axes[i].set_title(f'ACC {axis}-axis', fontsize=10)
-    axes[i].grid(True, alpha=0.3)
-    axes[i].set_xlabel('Time (sec)')
-    if i == 0:
-        axes[i].set_ylabel('Amplitude')
-
-plt.suptitle("Accelerometer Components", fontsize=12)
-plt.tight_layout()
-plt.subplots_adjust(top=0.9)
-plt.show()
 
 ###################################################################################
 ###################################################################################
 ## PROCESSING DATA:
-# Now let's proceed with 2 steps:
-# 1. Combining the x, y, z components of MEG data:
-
-print("\n=== Processing MEG Components ===")
-meg_norms = calculate_meg_norm(meg_data, save_plot=True, lvm_filename=lvm_path)
-print("\n=== MEG normalized plots are saved in 'MEG' folder ===")
-
-# 2. Combing the x, y, z components of ACC data:
+# Combing the x, y, z components of ACC data:
 
 
 print("\n=== Processing ACC Components ===")
