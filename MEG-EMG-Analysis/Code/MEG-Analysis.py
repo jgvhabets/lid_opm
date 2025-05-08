@@ -7,7 +7,13 @@ import matplotlib.pyplot as plt
 import mne
 from mne.filter import filter_data
 from mne.time_frequency import Spectrum
-
+# Add to the top of MEG-Analysis.py
+from plot_functions import (
+    calculate_individual_power_spectra,
+    plot_all_channel_power_spectra,
+    plot_meg_spectrogram,
+    plot_component_comparison,
+)
 
 #######################################################
 #################
@@ -84,48 +90,6 @@ def apply_meg_filters(data, sfreq=375):
         )
     
     return filtered_data
-
-# Function to create component subplot
-def plot_component_comparison(channels_start, channels_last, component_name, channel_names, rec1_label, rec11_label):
-    # Calculate grid layout
-    n_channels = len(channel_names)
-    n_cols = 5
-    n_rows = (n_channels + n_cols - 1) // n_cols
-    
-    # Create figure and subplots
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 15), layout="constrained")
-    axes = axes.flatten()
-    
-    for i in range(n_channels):
-        # Plot both recordings on the same subplot
-        axes[i].plot(time_start, channels_start[i], color='#1f77b4', 
-                    label=rec1_label, linewidth=1.5, alpha=0.8)
-        axes[i].plot(time_last, channels_last[i], color='#ff7f0e', 
-                    label=rec11_label, linewidth=1.5, alpha=0.7)
-        
-        # Add title and labels
-        axes[i].set_title(f'Channel {channel_names[i]}', fontsize=7)
-        axes[i].grid(True, alpha=0.3)
-        
-        # Add legend only for first subplot
-        if i == 0:
-            axes[i].legend()
-        
-        # Add y-label for leftmost plots
-        if i % n_cols == 0:
-            axes[i].set_ylabel('Magnitude (pT)')
-        
-        # Add x-label for bottom plots
-        if i >= n_channels - n_cols:
-            axes[i].set_xlabel('Time (sec)')
-    
-    # Hide unused subplots
-    for i in range(n_channels, len(axes)):
-        axes[i].set_visible(False)
-    
-    plt.suptitle(f'{component_name} Component Comparison: {rec1_label} vs {rec11_label}', fontsize=8)
-    plt.tight_layout()
-    plt.show()
 
 #################
 ### MAIN CODE ###
@@ -242,16 +206,12 @@ X_channels_last = [apply_meg_filters(channel) for channel in X_channels_last]
 Y_channels_last = [apply_meg_filters(channel) for channel in Y_channels_last]
 Z_channels_last = [apply_meg_filters(channel) for channel in Z_channels_last]
 
+# Normalize the filtered data:
+norms_start = calculate_channel_norms(X_channels_start, Y_channels_start, Z_channels_start)
+norms_last = calculate_channel_norms(X_channels_last, Y_channels_last, Z_channels_last)
+
 print("Filtering complete")
 
-
-# Assign a specific color to each component
-component_colors = {
-    'X': 'blue',     # Blue for X component
-    'Y': 'green',    # Green for Y component
-    'Z': 'red',      # Red for Z component
-    'Norm': 'purple' # Purple for the norm component
-}
 
 # Pick a sensor
 time_start = df_start["X_Value"]
@@ -263,195 +223,88 @@ time_last = df_last["X_Value"]
 #################
 #########################################################################
 
-# Create separate plots for each component
-plot_component_comparison(X_channels_start, X_channels_last, 'X', X_channels_names, rec1_label, rec11_label)
-plot_component_comparison(Y_channels_start, Y_channels_last, 'Y', X_channels_names, rec1_label, rec11_label)
-plot_component_comparison(Z_channels_start, Z_channels_last, 'Z', X_channels_names, rec1_label, rec11_label)
 
+print("\n=== Plotting MEG Raw and Normalized Data ===")
+print("\n=== Plotting MEG Raw and Normalized Data ===")
 
-# Now let's normalize the data and plot the channels:
-print("\nCalculating channel norms...")
-norms_start = calculate_channel_norms(X_channels_start, Y_channels_start, Z_channels_start)
-norms_last = calculate_channel_norms(X_channels_last, Y_channels_last, Z_channels_last)
+# Create list of channel numbers (excluding 5 and 13)
+channel_numbers = [i+1 for i in range(20) if i not in channels_to_exclude]
 
-# Plotting the normalized channels:
+# First figure for rec_1
+fig_raw, axes_raw = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
-# Create figure with subplots for norm comparisons
+# Create colormap for MEG channels
 n_channels = len(X_channels_names)
-n_cols = 5
-n_rows = (n_channels + n_cols - 1) // n_cols
+colors = plt.cm.rainbow(np.linspace(0, 1, n_channels))
 
-# Create figure
-fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 15), layout="constrained")
-axes = axes.flatten()
+# 1. First subplot: MEG X Component (rec1_label)
+for i, channel in enumerate(X_channels_start):
+    axes_raw[0].plot(time_start, channel, 
+                     color=colors[i], linewidth=0.6, 
+                     label=f'Channel {channel_numbers[i]}')
+axes_raw[0].set_title(f'MEG X Component - {rec1_label}')
+axes_raw[0].set_ylabel('Amplitude (pT)')
+axes_raw[0].grid(True, alpha=0.3)
+axes_raw[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
 
-# Plot norms for each channel
-for i in range(n_channels):
-    
-    axes[i].plot(time_start, norms_start[i], color='#1f77b4', 
-            label=rec1_label, linewidth=1.5, alpha=0.7)
-    axes[i].plot(time_last, norms_last[i], color='#ff7f0e', 
-            label=rec11_label, linewidth=1.5, alpha=0.7)
-    
-    # Add title and labels
-    axes[i].set_title(f'Channel {X_channels_names[i]}', fontsize=7)
-    axes[i].grid(True, alpha=0.3)
-    
-    # Add legend only for the first subplot
-    if i == 0:
-        axes[i].legend()
-    
-    # Add y-label for leftmost subplots
-    if i % n_cols == 0:
-        axes[i].set_ylabel('Magnitude')
-    
-    # Add x-label for bottom subplots
-    if i >= n_channels - n_cols:
-        axes[i].set_xlabel('Time (sec)')
+# 2. Second subplot: MEG normalized channels
+norms_start = calculate_channel_norms(X_channels_start, Y_channels_start, Z_channels_start)
+for i, norm in enumerate(norms_start):
+    axes_raw[1].plot(time_start, norm, 
+                     color=colors[i], linewidth=0.6,
+                     label=f'Channel {channel_numbers[i]}')
+axes_raw[1].set_title(f'MEG Vector Norm - {rec1_label}')
+axes_raw[1].set_ylabel('Magnitude')
+axes_raw[1].grid(True, alpha=0.3)
+axes_raw[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
 
-# Hide unused subplots
-for i in range(n_channels, len(axes)):
-    axes[i].set_visible(False)
-
-plt.suptitle(f'Channel Norms Comparison: {rec1_label} vs {rec11_label}', fontsize=8)
+plt.suptitle(f'MEG Components Analysis - {rec1_label}', fontsize=14)
 plt.tight_layout()
-plt.show()
+plt.subplots_adjust(top=0.95)
 
-# Create figure for power spectrum comparison
-fig_ps, axes_ps = plt.subplots(n_rows, n_cols, figsize=(20, 15), layout="constrained")
-axes_ps = axes_ps.flatten()
+# Second figure for rec_11
+fig_raw, axes_raw = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
-# Plot power spectrum for each channel
-for i in range(n_channels):
-    # Calculate power spectrum
-    freqs_start, power_start = calculate_power_spectrum(norms_start[i])
-    freqs_last, power_last = calculate_power_spectrum(norms_last[i])
-    
-    # Plot on log scale
-    axes_ps[i].semilogy(freqs_start, power_start, color='#1f77b4', 
-                    label=rec1_label, linewidth=1.5, alpha=0.7)
-    axes_ps[i].semilogy(freqs_last, power_last, color='#ff7f0e', 
-                    label=rec11_label, linewidth=1.5, alpha=0.7)
-    
-    # Add title and labels
-    axes_ps[i].set_title(f'{X_channels_names[i]}', fontsize=5)
-    axes_ps[i].grid(True, alpha=0.3)
-    
-      # Add legend to first subplot only
-    if i == 0:
-        axes_ps[i].legend()
-    
-    # Add y-label for leftmost subplots
-    if i % n_cols == 0:
-        axes_ps[i].set_ylabel('Power (magnitude²)')
-    
-    # Add x-label for bottom subplots
-    if i >= n_channels - n_cols:
-        axes_ps[i].set_xlabel('Frequency (Hz)')
+# 1. First subplot: MEG X Component (rec11_label)
+for i, channel in enumerate(X_channels_last):
+    axes_raw[0].plot(time_last, channel, 
+                     color=colors[i], linewidth=0.6, 
+                     label=f'Channel {X_channels_names[i]}')
+axes_raw[0].set_title(f'MEG X Component - {rec11_label}')
+axes_raw[0].set_ylabel('Amplitude (pT)')
+axes_raw[0].grid(True, alpha=0.3)
+axes_raw[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
 
-# Hide unused subplots
-for i in range(n_channels, len(axes_ps)):
-    axes_ps[i].set_visible(False)
+# 2. Second subplot: MEG normalized channels
+norms_last = calculate_channel_norms(X_channels_last, Y_channels_last, Z_channels_last)
+for i, norm in enumerate(norms_last):  # Remove zip() here
+    axes_raw[1].plot(time_last, norm, 
+                     color=colors[i], linewidth=0.6,
+                     label=f'Ch{X_channels_names[i]}')
+axes_raw[1].set_title(f'MEG Vector Norm - {rec11_label}')
+axes_raw[1].set_ylabel('Magnitude')
+axes_raw[1].grid(True, alpha=0.3)
+axes_raw[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
 
-plt.suptitle(f'Power Spectrum Comparison: {rec1_label} vs {rec11_label}', fontsize=8)
+plt.suptitle(f'MEG Components Analysis - {rec11_label}', fontsize=14)
 plt.tight_layout()
+plt.subplots_adjust(top=0.95)
 plt.show()
+###########################################################
 
-########################################################################
-# Now let's perform frequency band analysis using MNE
-# and plot the results for each channel.
 
-print("\nPerforming frequency band analysis using MNE...")
+print("\n=== Plotting Power Spectra for Normalized MEG Channels ===")
 
-# Define frequency bands
-freq_bands = {
-    'delta': (0.5, 4),
-    'theta': (4, 8),
-    'alpha': (8, 13),
-    'beta': (13, 30),
-    'gamma': (30, 100)
-}
-
-# Create info object for the data, necessary to use mne functions on the data
-info = mne.create_info(
-    ch_names=X_channels_names,
-    sfreq=375,  # Your sampling frequency
-    ch_types=['mag'] * len(X_channels_names)
+# Plot power spectra for first recording (Vector Norm)
+plot_all_channel_power_spectra(
+    norms_start, 
+    channel_numbers, 
+    f'Vector Norm - {rec1_label}'
 )
 
-# Convert numpy arrays to MNE Raw objects
-raw_start = mne.io.RawArray(np.array(norms_start), info)
-raw_last = mne.io.RawArray(np.array(norms_last), info)
-
-
-# Create Spectrum objects with 2-second windows
-window_length = 2  # seconds
-samples_per_window = int(375 * window_length)  # 750 samples
-start_time = 100
-spectrum_start = Spectrum(
-    raw_start,
-    tmin=start_time,                    # Start time
-    tmax= start_time + window_length,                 # Full duration
-    fmin=0.5,
-    fmax=100,
-    method='welch',
-    n_fft=samples_per_window,  # 2-second windows
-    n_per_seg=samples_per_window,
-    n_overlap=samples_per_window // 2,  # 50% overlap
-    picks=None,
-    exclude=[],
-    proj=False,
-    remove_dc=True,
-    reject_by_annotation=True,
-    n_jobs=1,
-    verbose=False
+# Plot power spectra for second recording (Vector Norm)
+plot_all_channel_power_spectra(
+    norms_last, 
+    channel_numbers, 
+    f'Vector Norm - {rec11_label}'
 )
-
-spectrum_last = Spectrum(
-    raw_last,
-    tmin=start_time,
-    tmax=start_time + window_length,
-    fmin=0.5,
-    fmax=100,
-    method='welch',
-    n_fft=samples_per_window,
-    n_per_seg=samples_per_window,
-    n_overlap=samples_per_window // 2,
-    picks=None,
-    exclude=[],
-    proj=False,
-    remove_dc=True,
-    reject_by_annotation=True,
-    n_jobs=1,
-    verbose=False
-)
-# Plot for each channel
-for ch_idx in range(len(X_channels_names)):
-    fig, ax = plt.subplots(figsize=(10, 6), layout="constrained")
-    
-    # Get power spectra data
-    psd_start = spectrum_start.get_data(picks=[ch_idx])
-    psd_last = spectrum_last.get_data(picks=[ch_idx])
-    freqs = spectrum_start.freqs
-    
-    # Plot power spectra
-    ax.semilogy(freqs, psd_start.squeeze(), 
-            color='#1f77b4', label=rec1_label)
-    ax.semilogy(freqs, psd_last.squeeze(), 
-            color='#ff7f0e', label=rec11_label)
-    # Highlight frequency bands
-    for band_name, (low, high) in freq_bands.items():
-        ax.axvspan(low, high, color='gray', alpha=0.3)
-        ax.axvline(x=low, color='black', linewidth=2, alpha=0.4)
-        ax.axvline(x=high, color='black', linewidth=2, alpha=0.4)
-        ax.text((low + high)/2, ax.get_ylim()[1], band_name, 
-                horizontalalignment='center', verticalalignment='bottom')
-    
-    ax.set_title(f'Channel {X_channels_names[ch_idx]} - Power Spectrum')
-    ax.set_xlabel('Frequency (Hz)')
-    ax.set_ylabel('Power Spectral Density')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
