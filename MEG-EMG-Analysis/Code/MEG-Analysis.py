@@ -91,6 +91,23 @@ def apply_meg_filters(data, sfreq=375):
     
     return filtered_data
 
+
+def create_meg_raw(channels, ch_names, sfreq=375):
+    """
+    Create an MNE RawArray from MEG channels.
+    channels: list of arrays (n_channels, n_times)
+    ch_names: list of channel names
+    sfreq: sampling frequency
+    Returns: MNE RawArray
+    """
+    n_channels = len(channels)
+    ch_types = ['mag'] * n_channels
+    info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+    # Explicitly set the unit to Tesla for each channel
+    data = np.array(channels)
+    return mne.io.RawArray(data, info, verbose=False)
+
+
 #################
 ### MAIN CODE ###
 #################
@@ -102,7 +119,7 @@ def apply_meg_filters(data, sfreq=375):
 # READING THE FILE AND DATAFRAME CREATION:
 
 #file rec1:
-file_path_1 = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/plfp65_rec3_13.11.2024_13-10-36_array1.lvm"
+file_path_1 = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/plfp65_rec1_13.11.2024_12-51-13_array1.lvm"
 df_start = pd.read_csv(file_path_1, header= 22, sep='\t')
 
 # file rec11:
@@ -150,14 +167,12 @@ Z_channels_last = Z_channels_last[:20]
 
 X_channels_names = X_channels_names[:20]  # Also trim the names to match
 
-# Exclude channels 5 and 13 from all components
-channels_to_exclude = [4, 12]
-print("\nExcluding channels 5 and 13 from all components...")
+# Exclude channels 5, 6, 13, and 20 from all components
+channels_to_exclude = [4, 5, 12, 19]
+print("\nExcluding channels 5, 6, 13, and 20 from all components...")
 
-# Helper function to remove specific indices from lists
 def remove_channels(channel_list, indices):
-        return [channel for i, channel in enumerate(channel_list) if i not in indices]
-    
+    return [channel for i, channel in enumerate(channel_list) if i not in indices] 
 
 # Remove channels from start recording
 X_channels_start = remove_channels(X_channels_start, channels_to_exclude)
@@ -174,6 +189,9 @@ X_channels_names = remove_channels(X_channels_names, channels_to_exclude)
 
 print(f'After excluding channels {channels_to_exclude}')
 print('we are considering: ', len(X_channels_names), ' channels for each component')
+
+# Create list of channel numbers (excluding 5, 6, 13, and 20)
+channel_numbers = [i+1 for i in range(20) if i not in channels_to_exclude]
 
 # Convert MEG data to picoTesla after extracting channels
 print("\nConverting MEG data to picoTesla...")
@@ -223,8 +241,6 @@ time_last = df_last["X_Value"]
 #################
 #########################################################################
 
-
-print("\n=== Plotting MEG Raw and Normalized Data ===")
 print("\n=== Plotting MEG Raw and Normalized Data ===")
 
 # Create list of channel numbers (excluding 5 and 13)
@@ -290,7 +306,7 @@ plt.suptitle(f'MEG Components Analysis - {rec11_label}', fontsize=14)
 plt.tight_layout()
 plt.subplots_adjust(top=0.95)
 plt.show()
-###########################################################
+##########################################################
 
 
 print("\n=== Plotting Power Spectra for Normalized MEG Channels ===")
