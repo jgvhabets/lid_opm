@@ -1,6 +1,7 @@
 #################
 ### LIBRARIES ###
 #################
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -8,7 +9,7 @@ import mne
 from mne.filter import filter_data
 from mne.time_frequency import Spectrum
 # Add to the top of MEG-Analysis.py
-from plot_functions import (
+from source.plot_functions import (
     calculate_individual_power_spectra,
     plot_all_channel_power_spectra,
     plot_meg_spectrogram,
@@ -78,10 +79,18 @@ def apply_meg_filters(data, sfreq=375):
     # Bandpass filter (1-100 Hz)
     data_bandpass = filter_data(data, sfreq=sfreq, l_freq=1, h_freq=100, 
                               method='fir', verbose=False)
-    
+        
+    # Apply notch filters (50 Hz and harmonics)
     filtered_data = data_bandpass
+    for freq in [50, 100, 150]:
+        filtered_data = mne.filter.notch_filter(
+            filtered_data, 
+            Fs=sfreq,  # Changed from sfreq to Fs
+            freqs=freq,
+            verbose=False
+        )
     
-    
+
     return filtered_data
 
 
@@ -111,12 +120,17 @@ def create_meg_raw(channels, ch_names, sfreq=375):
 
 # READING THE FILE AND DATAFRAME CREATION:
 
-#file rec1:
-file_path_1 = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/plfp65_rec1_13.11.2024_12-51-13_array1.lvm"
-df_start = pd.read_csv(file_path_1, header= 22, sep='\t')
+# Get the directory where this script is located
+base_dir = os.path.dirname(os.path.abspath(__file__))
 
-# file rec11:
-file_path_11 = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/plfp65_rec11_13.11.2024_14-18-30_array1.lvm"
+# Go up one directory and then into Data
+data_dir = os.path.join(base_dir, '..', 'Data')
+
+file_path_1 = os.path.join(data_dir, "plfp65_rec1_13.11.2024_12-51-13_array1.lvm")
+file_path_11 = os.path.join(data_dir, "plfp65_rec11_13.11.2024_14-18-30_array1.lvm")
+
+
+df_start = pd.read_csv(file_path_1, header= 22, sep='\t')
 df_last = pd.read_csv(file_path_11, header=22, sep='\t')
 
 # Extract recording names from file paths
@@ -382,16 +396,31 @@ plt.show()
 
 print("\n=== Plotting Power Spectra for Normalized MEG Channels ===")
 
+# Apply notch filter to each channel in norms_start and norm_last before plotting:
+sfreq = 375
+notch_freqs = [50, 100, 150]
+
+norms_start_notched = [
+    mne.filter.notch_filter(np.asarray(channel), Fs=sfreq, freqs=notch_freqs, verbose=False)
+    for channel in norms_start
+]
+
+norms_last_notched = [
+    mne.filter.notch_filter(np.asarray(channel), Fs=sfreq, freqs=notch_freqs, verbose=False)
+    for channel in norms_last
+]
+
+
 # Plot power spectra for first recording (Vector Norm)
 plot_all_channel_power_spectra(
-    norms_start, 
+    norms_start_notched, 
     channel_numbers, 
     f'Vector Norm - {rec1_label}'
 )
 
 # Plot power spectra for second recording (Vector Norm)
 plot_all_channel_power_spectra(
-    norms_last, 
+    norms_last_notched, 
     channel_numbers, 
     f'Vector Norm - {rec11_label}'
 )
