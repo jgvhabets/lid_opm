@@ -31,16 +31,6 @@ def apply_filter(data, sfreq, l_freq, h_freq):
     
     return raw.get_data()[0]
 
-####### CHECK ZERO #######
-def check_zero(channel_list, channel_names):
-    """Helper function to check for zero-filled channels"""
-    c = 0
-    for i, channel in enumerate(channel_list):
-        if np.all(channel == 0):
-            c = c + 1
-            print(f"The channel {channel_names[i]} is filled with 0's")
-    print(f"There are {c} empty channels.")
-
 ###### LVM DATA ######
 def extract_lvm_data(filepath):
     """Extract MEG data from .lvm file"""
@@ -143,69 +133,6 @@ def extract_con_data(filepath):
     
     return emg_data, acc_data, eeg_data, raw.info['sfreq']
 
-##### MEG PLOT #####
-
-def plot_meg_components(meg_data, time_array, save_plot=False, lvm_filename=None):
-    """
-    Plot all channels for each MEG component (X, Y, Z) in separate figures with distinct colors.
-    
-    Parameters:
-    -----------
-    meg_data : dict
-        Dictionary containing MEG data with 'X', 'Y', 'Z' components
-    time_array : array-like
-        Time points for x-axis
-    save_plot : bool, optional
-        Whether to save the plots to files
-    lvm_filename : str, optional
-        Original filename used for saving plots
-    """
-    import matplotlib.cm as cm
-    
-    # Create a colormap for channels that will be consistent across components
-    n_channels = len(meg_data['X'])
-    colors = cm.rainbow(np.linspace(0, 1, n_channels))
-    
-    # Component labels
-    components = {
-        'X': 'X Component',
-        'Y': 'Y Component',
-        'Z': 'Z Component'
-    }
-    
-    # Create plots for each component
-    for component, label in components.items():
-        plt.figure(figsize=(15, 8))
-        
-        # Plot all channels for this component
-        for i, channel in enumerate(meg_data[component]):
-            plt.plot(time_array, channel, color=colors[i], 
-                    linewidth=1, label=f'Channel {i+1}')
-        
-        plt.title(f'MEG {label} - All Channels', fontsize=12)
-        plt.xlabel('Time (sec)')
-        plt.ylabel('Amplitude (pT)')
-        plt.grid(True, alpha=0.3)
-        
-        # Add legend with smaller font and outside plot
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', 
-                  fontsize=8, ncol=2)
-        
-        plt.tight_layout()
-        
-        # Save plot if requested
-        if save_plot and lvm_filename:
-            plot_folder = '../plot'
-            meg_folder = os.path.join(plot_folder, 'MEG')
-            os.makedirs(meg_folder, exist_ok=True)
-            
-            base_filename = os.path.splitext(os.path.basename(lvm_filename))[0]
-            plot_path = os.path.join(meg_folder, 
-                                   f'{base_filename}_meg_{component.lower()}.png')
-            plt.savefig(plot_path, bbox_inches='tight')
-            print(f'*** MEG {component} component plot saved as {plot_path} ***')
-        
-        plt.show()
 
 ##### MEG norm #####
 
@@ -237,45 +164,7 @@ def calculate_acc_norm(acc_data):
     )
     
     return norm
-
-def plot_emg_channels(emg_data, time_con, save_plot=False, con_filename=None):
-    """Plot and optionally save EMG channel plots"""
-    # Create figure
-    fig, axes = plt.subplots(2, 3, figsize=(15, 8), sharex=True)
-    axes = axes.flatten()
-
-    for i, (location, data) in enumerate(emg_data.items()):
-        axes[i].plot(time_con, data, 'black', linewidth=1)
-        axes[i].set_title(f'EMG {location}', fontsize=10)
-        axes[i].grid(True, alpha=0.3)
-        axes[i].set_ylabel('Amplitude')
-        axes[i].set_xlabel('Time (sec)')
-
-    # Hide the last unused subplot
-    axes[-1].set_visible(False)
-
-    plt.suptitle("EMG Channels", fontsize=12)
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.9)
-
-    if save_plot and con_filename:
-        # Create plot/EMG folder structure if it doesn't exist
-        plot_folder = '../plot'
-        emg_folder = os.path.join(plot_folder, 'EMG')
-        if not os.path.exists(plot_folder):
-            os.makedirs(plot_folder)
-        if not os.path.exists(emg_folder):
-            os.makedirs(emg_folder)
-            
-        # Extract filename without path and extension
-        base_filename = os.path.splitext(os.path.basename(con_filename))[0]
-        
-        # Save plot with filename in plot/EMG folder
-        plot_path = os.path.join(emg_folder, f'{base_filename}_emg.png')
-        plt.savefig(plot_path)
-        print(f'*** EMG plots saved as {plot_path} ***')
  
-
 def create_time_mask(time_array, t_start, t_end):
     """Create a boolean mask for time window selection"""
     return (time_array >= t_start) & (time_array <= t_end)
@@ -438,6 +327,14 @@ meg_norms_raw = [
     for i in range(20)
 ]
 
+# Extract raw (unfiltered) ACC data
+acc_raw = {}
+acc_raw['x'] = raw.get_data(picks=['E17'])[0]
+acc_raw['y'] = raw.get_data(picks=['E18'])[0]
+acc_raw['z'] = raw.get_data(picks=['E19'])[0]
+acc_norm_raw = np.sqrt(acc_raw['x']**2 + acc_raw['y']**2 + acc_raw['z']**2)
+
+
 ### Removing bad channels 5 and 13###
 channels_to_exclude = [4, 12]  
 print("\nExcluding channels 5 and 13 from all MEG components...")
@@ -460,9 +357,6 @@ print("\n=== Plotting Raw MEG and ACC Data ===")
 # 1. MEG X channels (already extracted as X_raw)
 # 2. MEG raw vector norm
 # 3. ACC norm (calculated from raw axes)
-
-# Calculate ACC norm from raw axes
-acc_norm_raw = np.sqrt(acc_data['x']**2 + acc_data['y']**2 + acc_data['z']**2)
 
 # Create figure with 3 subplots
 fig, axes = plt.subplots(3, 1, figsize=(15, 12), sharex=True)
@@ -550,6 +444,73 @@ plt.subplots_adjust(top=0.9)
 plt.show()
 
 ###################################################################################
+# Plot synchronized data for EMG - MEG - ACC channels
+print("\n=== Plotting Synchronized Filtered MEG Norm, ACC Norm, and Right Arm EMG ===")
+
+fig, axes = plt.subplots(3, 1, figsize=(15, 12), sharex=True)
+
+# 1. MEG norm (filtered)
+meg_norms = calculate_meg_norm(meg_data)
+for i, norm in enumerate(meg_norms):
+    axes[0].plot(time_lvm_rel[lvm_mask], norm[lvm_mask], 
+                 color=colors[i], linewidth=0.6, label=f'Channel {channel_numbers[i]}')
+axes[0].set_title('MEG Vector Norm - All Channels')
+axes[0].set_ylabel('Magnitude')
+axes[0].grid(True, alpha=0.3)
+axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+
+# 2. ACC norm (filtered)
+acc_norm = calculate_acc_norm(acc_data)
+axes[1].plot(time_con_rel[con_mask], acc_norm[con_mask], 
+             color='purple', linewidth=1.2, label='ACC magnitude')
+axes[1].set_title('Accelerometer Vector Norm - Filtered')
+axes[1].set_ylabel('Magnitude')
+axes[1].grid(True, alpha=0.3)
+axes[1].legend()
+
+# 3. Right arm EMG (filtered)
+axes[2].plot(time_con_rel[con_mask], emg_data['right_arm'][con_mask], 
+             color='black', linewidth=1, label='Right Arm EMG')
+axes[2].set_title('Right Arm EMG - Filtered')
+axes[2].set_xlabel('Time from Trigger (s)')
+axes[2].set_ylabel('Amplitude')
+axes[2].grid(True, alpha=0.3)
+axes[2].legend()
+
+plt.suptitle('Synchronized Filtered MEG Norm, ACC Norm, and Right Arm EMG', fontsize=14)
+plt.tight_layout()
+plt.subplots_adjust(top=0.9)
+plt.show()
+
 ###################################################################################
+# Plot synchronized data for EMG channels
 
+print("\n=== Plotting Synchronized Filtered EMG Channels ===")
 
+emg_locations = ['right_arm', 'neck', 'left_arm', 'right_leg', 'left_leg']
+emg_labels = [
+    'Right Arm EMG',
+    'Neck EMG',
+    'Left Arm EMG',
+    'Right Leg EMG',
+    'Left Leg EMG'
+]
+
+fig, axes = plt.subplots(5, 1, figsize=(15, 18), sharex=True)
+
+for idx, (loc, label) in enumerate(zip(emg_locations, emg_labels)):
+    emg_signal = emg_data[loc]
+    # If the signal is 2D (from bipolar subtraction), flatten it
+    if hasattr(emg_signal, "ndim") and emg_signal.ndim > 1:
+        emg_signal = emg_signal[0]
+    axes[idx].plot(time_con_rel[con_mask], emg_signal[con_mask], color='black', linewidth=1, label=label)
+    axes[idx].set_title(label, fontsize=8)
+    axes[idx].set_ylabel('Amplitude')
+    axes[idx].grid(True, alpha=0.3)
+
+axes[-1].set_xlabel('Time from Trigger (s)')
+plt.suptitle('Synchronized Filtered EMG Channels', fontsize=12)
+plt.tight_layout()
+plt.subplots_adjust(top=0.9)
+plt.show()
