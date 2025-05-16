@@ -418,8 +418,28 @@ SYNCHRONIZATION SUMMARY:
    - For MEG: data[lvm_mask]
    - For EMG/ACC/EEG: data[con_mask]
 '''
-### Removing bad channels ###
-channels_to_exclude = [4, 12]  # Python uses 0-based indexing
+########################################################################
+# Reload raw (unfiltered) MEG data from the LVM file
+df_raw = pd.read_csv(lvm_path, header=22, sep='\t')
+
+# Get all X, Y, Z channel names (first 20)
+X_raw_names = [col for col in df_raw.columns if "X" in col and col not in ['X_Value', 'MUX_Counter1', 'MUX_Counter2']]
+Y_raw_names = [col for col in df_raw.columns if "Y" in col and col != 'Y_Value']
+Z_raw_names = [col for col in df_raw.columns if "Z" in col and col != 'Z_Value']
+
+X_raw = [df_raw[col].values for col in X_raw_names][:20]
+Y_raw = [df_raw[col].values for col in Y_raw_names][:20]
+Z_raw = [df_raw[col].values for col in Z_raw_names][:20]
+channel_numbers_raw = list(range(1, 21))  # Channels 1-20
+
+# Calculate norms for raw data
+meg_norms_raw = [
+    np.sqrt(X_raw[i]**2 + Y_raw[i]**2 + Z_raw[i]**2)
+    for i in range(20)
+]
+
+### Removing bad channels 5 and 13###
+channels_to_exclude = [4, 12]  
 print("\nExcluding channels 5 and 13 from all MEG components...")
 
 def remove_channels(channel_list, indices):
@@ -431,12 +451,60 @@ meg_data['Y'] = remove_channels(meg_data['Y'], channels_to_exclude)
 meg_data['Z'] = remove_channels(meg_data['Z'], channels_to_exclude)
 meg_data['channel_names'] = remove_channels(meg_data['channel_names'], channels_to_exclude)
 
+#######################################################################
+## RAW DATA PLOT: MEG (X) + ACC (x, y, z) + ACC norm
+#######################################################################
+
+print("\n=== Plotting Raw MEG and ACC Data ===")
+
+# 1. MEG X channels (already extracted as X_raw)
+# 2. MEG raw vector norm
+# 3. ACC norm (calculated from raw axes)
+
+# Calculate ACC norm from raw axes
+acc_norm_raw = np.sqrt(acc_data['x']**2 + acc_data['y']**2 + acc_data['z']**2)
+
+# Create figure with 3 subplots
+fig, axes = plt.subplots(3, 1, figsize=(15, 12), sharex=True)
+
+# Colors for MEG channels
+colors_meg = plt.cm.rainbow(np.linspace(0, 1, len(X_raw)))
+
+# 1. First subplot: MEG X channels (raw)
+for i, channel in enumerate(X_raw):
+    axes[0].plot(time_lvm_rel[lvm_mask], channel[lvm_mask], 
+                 color=colors_meg[i], linewidth=0.6, label=f'Channel {i+1}')
+axes[0].set_title('MEG X Component - All Channels (Raw)')
+axes[0].set_ylabel('Amplitude (a.u.)')
+axes[0].grid(True, alpha=0.3)
+axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+# 2. Second subplot: MEG raw vector norm
+for i, norm in enumerate(meg_norms_raw):
+    axes[1].plot(time_lvm_rel[lvm_mask], norm[lvm_mask], 
+                 color=colors_meg[i], linewidth=0.6, label=f'Channel {i+1}')
+axes[1].set_title('MEG Vector Norm - All Channels (Raw)')
+axes[1].set_ylabel('Magnitude (a.u.)')
+axes[1].grid(True, alpha=0.3)
+
+# 3. Third subplot: ACC norm (raw)
+axes[2].plot(time_con_rel[con_mask], acc_norm_raw[con_mask], color='purple', linewidth=1, label='ACC magnitude')
+axes[2].set_title('Accelerometer Vector Norm (Raw)')
+axes[2].set_xlabel('Time from Trigger (s)')
+axes[2].set_ylabel('Magnitude (a.u.)')
+axes[2].grid(True, alpha=0.3)
+axes[2].legend()
+
+plt.suptitle('Synchronized MEG (Raw) and ACC (Raw) Data', fontsize=14)
+plt.tight_layout()
+plt.subplots_adjust(top=0.9)
+plt.show()
 
 #######################################################################
-##RAW DATA PLOT:
+##FILTERED DATA PLOT:
 #######################################################################
 
-print("\n=== Plotting Raw Data ===")
+print("\n=== Plotting Filtered Data ===")
 
 # Create figure with 3 subplots
 fig, axes = plt.subplots(3, 1, figsize=(15, 12), sharex=True)
@@ -483,9 +551,5 @@ plt.show()
 
 ###################################################################################
 ###################################################################################
-## PROCESSING DATA:
-# Combing the x, y, z components of ACC data:
 
 
-print("\n=== Processing ACC Components ===")
-acc_norm = calculate_acc_norm(acc_data)
