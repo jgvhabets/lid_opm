@@ -77,8 +77,8 @@ def calculate_individual_power_spectra(signal, sfreq=375, window_length=1.0, ove
 
 def plot_all_channel_power_spectra(channels, channel_names, title, sfreq=375, window_length=1.0, overlap=0.5, freq_range=(1, 100)):
     """
-    Plot power spectra for all channels in a single figure, with notch filtering.
-    
+    Plot power spectra for all channels in a single figure.
+
     Args:
         channels: List of channel signals
         channel_names: List of channel names or numbers
@@ -96,14 +96,10 @@ def plot_all_channel_power_spectra(channels, channel_names, title, sfreq=375, wi
     
     # For each channel
     for i, (channel, name) in enumerate(zip(channels, channel_names)):
-        # Apply notch filter to remove line noise (e.g., 50 Hz and harmonics)
-        channel_filtered = mne.filter.notch_filter(
-            channel, Fs=sfreq, freqs=[50, 100, 150], verbose=False
-        )
-
+        channel = np.asarray(channel)
         # Calculate power spectrum
         freqs, all_psds, _ = calculate_individual_power_spectra(
-            channel_filtered, sfreq, window_length, overlap
+            channel, sfreq, window_length, overlap
         )
         psd_array = np.array(all_psds)
         avg_psd = np.mean(psd_array, axis=0)
