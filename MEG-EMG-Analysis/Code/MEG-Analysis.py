@@ -79,15 +79,8 @@ def apply_meg_filters(data, sfreq=375):
     data_bandpass = filter_data(data, sfreq=sfreq, l_freq=1, h_freq=100, 
                               method='fir', verbose=False)
     
-    # Apply notch filters (50 Hz and harmonics)
     filtered_data = data_bandpass
-    for freq in [50, 100, 150]:
-        filtered_data = mne.filter.notch_filter(
-            filtered_data, 
-            Fs=sfreq,  # Changed from sfreq to Fs
-            freqs=freq,
-            verbose=False
-        )
+    
     
     return filtered_data
 
@@ -167,6 +160,25 @@ Z_channels_last = Z_channels_last[:20]
 
 X_channels_names = X_channels_names[:20]  # Also trim the names to match
 
+######################################################
+# Create MNE RawArray objects for both recordings
+
+# Convert start recording channels to pT
+X_channels_start_raw = [channel * 1e-12 for channel in X_channels_start]
+Y_channels_start_raw = [channel * 1e-12 for channel in Y_channels_start]
+Z_channels_start_raw = [channel * 1e-12 for channel in Z_channels_start]
+
+# Convert last recording channels to pT
+X_channels_last_raw = [channel * 1e-12 for channel in X_channels_last]
+Y_channels_last_raw = [channel * 1e-12 for channel in Y_channels_last]
+Z_channels_last_raw = [channel * 1e-12 for channel in Z_channels_last]
+
+norms_start_raw = calculate_channel_norms(X_channels_start_raw, Y_channels_start_raw, Z_channels_start_raw)
+norms_last_raw = calculate_channel_norms(X_channels_last_raw, Y_channels_last_raw, Z_channels_last_raw)
+X_channels_names_raw = X_channels_names[:20] 
+
+######################################################
+
 # Exclude channels 5, 6, 13, and 20 from all components
 channels_to_exclude = [4, 5, 12, 19]
 print("\nExcluding channels 5, 6, 13, and 20 from all components...")
@@ -240,8 +252,70 @@ time_last = df_last["X_Value"]
 ###  PLOTS ###
 #################
 #########################################################################
-
 print("\n=== Plotting MEG Raw and Normalized Data ===")
+
+# First figure for rec_1
+fig_raw, axes_raw = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+# Create colormap for MEG channels
+n_raw = len(X_channels_names_raw)
+n_channels = n_raw +1
+colors = plt.cm.rainbow(np.linspace(0, 1, n_channels))
+
+# 1. First subplot: MEG X Component (rec1_label)
+for i, channel in enumerate(X_channels_start_raw):
+    axes_raw[0].plot(time_start, channel, 
+                     color=colors[i], linewidth=0.6, 
+                     label=f'Channel {X_channels_names_raw[i]}')
+axes_raw[0].set_title(f'MEG X Component - {rec1_label} - Raw')
+axes_raw[0].set_ylabel('Amplitude (pT)')
+axes_raw[0].grid(True, alpha=0.3)
+axes_raw[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+# 2. Second subplot: MEG normalized channels
+for i, norm in enumerate(norms_start_raw):
+    axes_raw[1].plot(time_start, norm, 
+                     color=colors[i], linewidth=0.6,
+                     label=f'Channel {X_channels_names_raw[i]}')
+axes_raw[1].set_title(f'MEG Vector Norm - {rec1_label} - Raw')
+axes_raw[1].set_ylabel('Magnitude')
+axes_raw[1].grid(True, alpha=0.3)
+axes_raw[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+plt.tight_layout()
+plt.subplots_adjust(top=0.95)
+
+# Second figure for rec_11
+fig_raw, axes_raw = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+# 1. First subplot: MEG X Component (rec11_label)
+for i, channel in enumerate(X_channels_last_raw):
+    axes_raw[0].plot(time_last, channel, 
+                     color=colors[i], linewidth=0.6, 
+                     label=f'Channel {X_channels_names_raw[i]}')
+axes_raw[0].set_title(f'MEG X Component - {rec11_label} - Raw')
+axes_raw[0].set_ylabel('Amplitude (pT)')
+axes_raw[0].grid(True, alpha=0.3)
+axes_raw[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+# 2. Second subplot: MEG normalized channels
+for i, norm in enumerate(norms_last_raw):  # Remove zip() here
+    axes_raw[1].plot(time_last, norm, 
+                     color=colors[i], linewidth=0.6,
+                     label=f'Ch{X_channels_names_raw[i]}')
+axes_raw[1].set_title(f'MEG Vector Norm - {rec11_label} - Raw')
+axes_raw[1].set_ylabel('Magnitude')
+axes_raw[1].grid(True, alpha=0.3)
+axes_raw[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+plt.tight_layout()
+plt.subplots_adjust(top=0.95)
+plt.show()
+##########################################################
+##########################################################
+
+print("\n=== Filtering ===")
+print("\n=== Plotting FILTERED MEG and Normalized Data ===")
 
 # Create list of channel numbers (excluding 5 and 13)
 channel_numbers = [i+1 for i in range(20) if i not in channels_to_exclude]
@@ -258,56 +332,53 @@ for i, channel in enumerate(X_channels_start):
     axes_raw[0].plot(time_start, channel, 
                      color=colors[i], linewidth=0.6, 
                      label=f'Channel {channel_numbers[i]}')
-axes_raw[0].set_title(f'MEG X Component - {rec1_label}')
+axes_raw[0].set_title(f'MEG X Component - {rec1_label} - Filtered')
 axes_raw[0].set_ylabel('Amplitude (pT)')
 axes_raw[0].grid(True, alpha=0.3)
 axes_raw[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
 
 # 2. Second subplot: MEG normalized channels
-norms_start = calculate_channel_norms(X_channels_start, Y_channels_start, Z_channels_start)
 for i, norm in enumerate(norms_start):
     axes_raw[1].plot(time_start, norm, 
                      color=colors[i], linewidth=0.6,
                      label=f'Channel {channel_numbers[i]}')
-axes_raw[1].set_title(f'MEG Vector Norm - {rec1_label}')
+axes_raw[1].set_title(f'MEG Vector Norm - {rec1_label} - Filtered')
 axes_raw[1].set_ylabel('Magnitude')
 axes_raw[1].grid(True, alpha=0.3)
 axes_raw[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
 
-plt.suptitle(f'MEG Components Analysis - {rec1_label}', fontsize=14)
 plt.tight_layout()
 plt.subplots_adjust(top=0.95)
 
 # Second figure for rec_11
-fig_raw, axes_raw = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
 # 1. First subplot: MEG X Component (rec11_label)
 for i, channel in enumerate(X_channels_last):
-    axes_raw[0].plot(time_last, channel, 
+    axes[0].plot(time_last, channel, 
                      color=colors[i], linewidth=0.6, 
                      label=f'Channel {X_channels_names[i]}')
-axes_raw[0].set_title(f'MEG X Component - {rec11_label}')
-axes_raw[0].set_ylabel('Amplitude (pT)')
-axes_raw[0].grid(True, alpha=0.3)
-axes_raw[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+axes[0].set_title(f'MEG X Component - {rec11_label} - Filtered')
+axes[0].set_ylabel('Amplitude (pT)')
+axes[0].grid(True, alpha=0.3)
+axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
 
 # 2. Second subplot: MEG normalized channels
-norms_last = calculate_channel_norms(X_channels_last, Y_channels_last, Z_channels_last)
-for i, norm in enumerate(norms_last):  # Remove zip() here
-    axes_raw[1].plot(time_last, norm, 
+for i, norm in enumerate(norms_last):
+    axes[1].plot(time_last, norm, 
                      color=colors[i], linewidth=0.6,
                      label=f'Ch{X_channels_names[i]}')
-axes_raw[1].set_title(f'MEG Vector Norm - {rec11_label}')
-axes_raw[1].set_ylabel('Magnitude')
-axes_raw[1].grid(True, alpha=0.3)
-axes_raw[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+axes[1].set_title(f'MEG Vector Norm - {rec11_label} - Filtered')
+axes[1].set_ylabel('Magnitude')
+axes[1].grid(True, alpha=0.3)
+axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
 
-plt.suptitle(f'MEG Components Analysis - {rec11_label}', fontsize=14)
 plt.tight_layout()
 plt.subplots_adjust(top=0.95)
 plt.show()
-##########################################################
 
+##########################################################
+##########################################################
 
 print("\n=== Plotting Power Spectra for Normalized MEG Channels ===")
 

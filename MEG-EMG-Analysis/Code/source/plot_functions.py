@@ -77,7 +77,7 @@ def calculate_individual_power_spectra(signal, sfreq=375, window_length=1.0, ove
 
 def plot_all_channel_power_spectra(channels, channel_names, title, sfreq=375, window_length=1.0, overlap=0.5, freq_range=(1, 100)):
     """
-    Plot power spectra for all channels in a single figure.
+    Plot power spectra for all channels in a single figure, with notch filtering.
     
     Args:
         channels: List of channel signals
@@ -96,25 +96,26 @@ def plot_all_channel_power_spectra(channels, channel_names, title, sfreq=375, wi
     
     # For each channel
     for i, (channel, name) in enumerate(zip(channels, channel_names)):
+        # Apply notch filter to remove line noise (e.g., 50 Hz and harmonics)
+        channel_filtered = mne.filter.notch_filter(
+            channel, Fs=sfreq, freqs=[50, 100, 150], verbose=False
+        )
+
         # Calculate power spectrum
-        freqs, all_psds, _ = calculate_individual_power_spectra(channel, sfreq, window_length, overlap)
-        
-        # Convert list of PSDs to array
+        freqs, all_psds, _ = calculate_individual_power_spectra(
+            channel_filtered, sfreq, window_length, overlap
+        )
         psd_array = np.array(all_psds)
-        
-        # Average across windows
         avg_psd = np.mean(psd_array, axis=0)
-        
-        # Get frequency indices within our range
         freq_mask = (freqs >= freq_range[0]) & (freqs <= freq_range[1])
         plot_freqs = freqs[freq_mask]
         plot_psd = avg_psd[freq_mask]
-        
-        # Plot this channel's power spectrum
-        plt.semilogy(plot_freqs, plot_psd, color=colors[i], 
-                    linewidth=1.5, alpha=0.8, label=f'Channel {name}')
-    
-    # Add labels and title
+
+        plt.semilogy(
+            plot_freqs, plot_psd, color=colors[i],
+            linewidth=1.5, alpha=0.8, label=f'Channel {name}'
+        )
+
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Power (pT²/Hz)')
     plt.title(f'Power Spectra - {title}')

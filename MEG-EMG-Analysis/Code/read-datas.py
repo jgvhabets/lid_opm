@@ -488,5 +488,4 @@ plt.show()
 
 
 print("\n=== Processing ACC Components ===")
-acc_norm = calculate_acc_norm(acc_data, save_plot=True, con_filename=con_path)
-print("\n=== ACC normalized plot is saved in 'ACC' folder ===")
+acc_norm = calculate_acc_norm(acc_data)
