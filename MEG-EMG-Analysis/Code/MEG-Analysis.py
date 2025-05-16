@@ -396,31 +396,16 @@ plt.show()
 
 print("\n=== Plotting Power Spectra for Normalized MEG Channels ===")
 
-# Apply notch filter to each channel in norms_start and norm_last before plotting:
-sfreq = 375
-notch_freqs = [50, 100, 150]
-
-norms_start_notched = [
-    mne.filter.notch_filter(np.asarray(channel), Fs=sfreq, freqs=notch_freqs, verbose=False)
-    for channel in norms_start
-]
-
-norms_last_notched = [
-    mne.filter.notch_filter(np.asarray(channel), Fs=sfreq, freqs=notch_freqs, verbose=False)
-    for channel in norms_last
-]
-
-
 # Plot power spectra for first recording (Vector Norm)
 plot_all_channel_power_spectra(
-    norms_start_notched, 
+    norms_start, 
     channel_numbers, 
     f'Vector Norm - {rec1_label}'
 )
 
 # Plot power spectra for second recording (Vector Norm)
 plot_all_channel_power_spectra(
-    norms_last_notched, 
+    norms_last, 
     channel_numbers, 
     f'Vector Norm - {rec11_label}'
 )
