@@ -2,7 +2,10 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import mne
-from functions_for_pipeline import create_raw_df, plot_raw_signals, notch_filter, bandpass_filter, create_filtered_df
+import scipy as sp
+from scipy.signal import butter, sosfiltfilt
+from EMG_analysis_bachelor.functions_for_pipeline import get_ch_indices, plot_channel_overview, normalize_emg, notched, \
+    filtered, create_df, envelope
 import matplotlib
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
@@ -10,70 +13,70 @@ import matplotlib.pyplot as plt
 # import data
 EMG_ACC_data = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/"
                                    "PTB_measurement_14.04/Bonato_Federico_2025-04-14_13-02-56.cnt", preload=True)
+EMG_only_test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG/"
+                                   "test_first_2025-04-07_14-10-04_forearm_upperSide.cnt", preload=True)
 custom_order_names = ["BIP6", "BIP1", "BIP2", "BIP7", "BIP8"]
+# custom_order_names = ["BIP7", "BIP8"]
 location = {"BIP7":"left forearm",
             "BIP8": "left delt",
             "BIP1" : "Charité ACC : y",
             "BIP2" : "Charité ACC : z",
             "BIP6" : "Charité ACC : x"}
 EMG = ["BIP7", "BIP8"]
+ACC = ["BIP6", "BIP1", "BIP2"]
+emg_idx, acc_idx = get_ch_indices(custom_order_names, EMG, ACC)
 
 data, times = EMG_ACC_data[custom_order_names, : ]
 data[0] *= -1
 
 # creating raw df
-raw_df = create_raw_df(data, custom_order_names, times)
+raw_df = create_df(data, custom_order_names, times)
 
 # plotting the raw signals
-plot_raw_signals(custom_order_names, raw_df, location, EMG)
+plot_channel_overview(custom_order_names, raw_df,"raw_signals", location, EMG)
 
 # apply notch filter
-notched_data = notch_filter(data, [50, 100, 150], 1000)
+notched_df = notched(raw_df, custom_order_names, times)
 
-# apply band pass filters (specify which Frequencies) -> differences for EMG and ACC! - noch machen!
-notched_and_filtered_data = bandpass_filter(notched_data, 1000, 2, None)
-
-# create notched and filtered df
-filtered_df = create_filtered_df(notched_and_filtered_data, custom_order_names, times)
+# filtering
+notched_and_filtered_df = filtered(notched_df, custom_order_names, ACC, EMG, times)
 
 # plot filtered data (overview?)
-fig, axs = plt.subplots(2,3, figsize=(12,8))
-axs = axs.ravel()
-for i, channel in enumerate(custom_order_names):
-    axs[i].plot(filtered_df["Time (s)"], filtered_df[channel])
-    axs[i].set_title(f"{channel} : signal of {location[channel]}")
-    axs[i].set_xlabel("Time (s)")
-    axs[i].set_ylabel("Amplitude (V)" if channel in EMG else "g")
-
-    if len(axs) > len(custom_order_names):
-        axs[-1].axis("off")
-
-plt.tight_layout()
-#plt.show()
+plot_channel_overview(custom_order_names, notched_and_filtered_df,"filtered_signals", location, EMG)
 
 # retrification and plotting
-df_rectified = abs(filtered_df) #technically also took the absolute values of the time column, but that doesnt matter i think
+rectified_df = abs(notched_and_filtered_df) #technically also took the absolute values of the time column, but that doesnt matter i think
 
-fig, axs = plt.subplots(2,3, figsize=(12,8))
-axs = axs.ravel()
-for i, channel in enumerate(custom_order_names):
-    axs[i].plot(df_rectified["Time (s)"], df_rectified[channel])
-    axs[i].set_title(f"{channel} : signal of {location[channel]}")
-    axs[i].set_xlabel("Time (s)")
-    axs[i].set_ylabel("Amplitude (V)" if channel in EMG else "g")
+plot_channel_overview(custom_order_names, rectified_df, "rectified_signals", location, EMG)
 
-    if len(axs) > len(custom_order_names):
-        axs[-1].axis("off")
-plt.tight_layout()
-#plt.show()
+# normalizing
+emg_normalized_df = normalize_emg(rectified_df, custom_order_names, EMG, times)
 
-# getting mean of EMG
-mean_forearm = df_rectified.loc[:, "BIP7"].mean()
-mean_delt = df_rectified.loc[:, "BIP8"].mean()
+# plot normalized data
+plot_channel_overview(EMG, emg_normalized_df, "normalized_df", location, EMG)
 
-plt.figure()
-plt.errorbar(["Forearm"], mean_forearm)
-plt.errorbar(["Delt"], mean_delt)
-plt.show()
+# build envelope
+emg_envelopes = envelope(emg_normalized_df, custom_order_names, EMG, times, 3)
+plot_channel_overview(EMG, emg_envelopes, "normalized_df", location, EMG)
 
-# movement detection...
+
+
+
+
+
+
+emg_envelopes = pd.DataFrame()
+
+low_pass = 10/(1000/2)
+sos = butter(4, low_pass, btype='lowpass', output="sos")
+
+emg_columns = [col for col in df_rectified.columns if col != 'Time (s)']
+for col in emg_columns:
+    signal = df_rectified.loc[:, col].values
+    filtered = sosfiltfilt(sos, x=signal)
+    emg_envelopes[col] = filtered
+
+emg_envelopes["Time (s)"] = times
+
+plot_channel_overview(custom_order_names, emg_envelopes, "emg_envelopes", location, EMG)
+
