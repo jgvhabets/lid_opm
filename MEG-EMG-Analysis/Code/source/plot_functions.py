@@ -229,3 +229,30 @@ def plot_component_comparison(channels_start, channels_last, component_name, cha
     plt.tight_layout()
     plt.show()
 
+def plot_meg_3x3_grid(
+    data_list,           # list of 3 arrays (channels)
+    time_vector,         # time array (np.array or pd.Series)
+    time_windows,        # list of 3 boolean masks
+    channel_labels,      # list of 3 channel labels
+    time_labels,         # list of 3 time window labels
+    colors,              # list/array of 3 colors
+    suptitle             # string for the figure title
+):
+    """
+    Plot a 3x3 grid: columns=channels, rows=time windows.
+    """
+    fig, axes = plt.subplots(3, 3, figsize=(15, 10), sharex=False)
+    for row, t_mask in enumerate(time_windows):
+        for col, (ch_data, ch_label) in enumerate(zip(data_list, channel_labels)):
+            axes[row, col].plot(time_vector[t_mask], ch_data[t_mask], color=colors[col])
+            if row == 0:
+                axes[row, col].set_title(ch_label)
+            if col == 0:
+                axes[row, col].set_ylabel('Amplitude (pT)')
+            if row == 2:
+                axes[row, col].set_xlabel('Time (sec)')
+            axes[row, col].grid(True, alpha=0.3)
+    plt.suptitle(suptitle, fontsize=16)
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.9)
+    plt.show()
