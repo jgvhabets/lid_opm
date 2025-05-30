@@ -8,12 +8,13 @@ import matplotlib.pyplot as plt
 import mne
 from mne.filter import filter_data
 from mne.time_frequency import Spectrum
-# Add to the top of MEG-Analysis.py
+from source.ssp_function import apply_ssp_from_baseline
 from source.plot_functions import (
     calculate_individual_power_spectra,
     plot_all_channel_power_spectra,
     plot_meg_spectrogram,
     plot_component_comparison,
+    plot_meg_3x3_grid
 )
 
 #######################################################
@@ -77,7 +78,7 @@ def apply_meg_filters(data, sfreq=375):
         filtered_data: Filtered MEG signal
     """
     # Bandpass filter (1-100 Hz)
-    data_bandpass = filter_data(data, sfreq=sfreq, l_freq=1, h_freq=100, 
+    data_bandpass = filter_data(data, sfreq=sfreq, l_freq=3, h_freq=100, 
                               method='fir', verbose=False)
         
     # Apply notch filters (50 Hz and harmonics)
@@ -85,7 +86,7 @@ def apply_meg_filters(data, sfreq=375):
     for freq in [50, 100, 150]:
         filtered_data = mne.filter.notch_filter(
             filtered_data, 
-            Fs=sfreq,  # Changed from sfreq to Fs
+            Fs=sfreq,  
             freqs=freq,
             verbose=False
         )
@@ -126,12 +127,14 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # Go up one directory and then into Data
 data_dir = os.path.join(base_dir, '..', 'Data')
 
-file_path_1 = os.path.join(data_dir, "plfp65_rec1_13.11.2024_12-51-13_array1.lvm")
-file_path_11 = os.path.join(data_dir, "plfp65_rec11_13.11.2024_14-18-30_array1.lvm")
+file_path_1 = os.path.join(data_dir, "plfp65_rec11_13.11.2024_14-18-30_array1.lvm")
+file_path_11 = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
+ssp_baseline_file = os.path.join(data_dir, "adxl_mov_sensor__12.12.2024_12-07-05_array1.lvm")
 
 
 df_start = pd.read_csv(file_path_1, header= 22, sep='\t')
 df_last = pd.read_csv(file_path_11, header=22, sep='\t')
+df_baseline = pd.read_csv(ssp_baseline_file, header=22, sep=',')
 
 # Extract recording names from file paths
 rec1_name = file_path_1.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec3']
@@ -153,7 +156,7 @@ X_channels_names = [col for col in X_channels_names if col not in X_extras]
 
 
 
-# Extracting the channels from startting and last files:
+# Extracting the channels from start and last files:
 
 X_channels_start = [df_start[col].values for col in X_channels_names]
 Y_channels_start = [df_start[col].values for col in Y_channels_names]
@@ -190,6 +193,8 @@ Z_channels_last_raw = [channel * 1e-12 for channel in Z_channels_last]
 norms_start_raw = calculate_channel_norms(X_channels_start_raw, Y_channels_start_raw, Z_channels_start_raw)
 norms_last_raw = calculate_channel_norms(X_channels_last_raw, Y_channels_last_raw, Z_channels_last_raw)
 X_channels_names_raw = X_channels_names[:20] 
+Y_channels_names_raw = Y_channels_names[:20] 
+Z_channels_names_raw = Z_channels_names[:20] 
 
 ######################################################
 
@@ -393,6 +398,79 @@ plt.show()
 
 ##########################################################
 ##########################################################
+'''
+# APPLICATION OF SSP METHOD TO DENOISE THE DATA
+print("\n=== Applying SSP Method to Denoise the Data ===")
+
+#   We need a baseline recording to compute the projectors.
+#   We will use the empty room recording for this purpose.
+#   I've selected this time range because it contains no significant activity.
+
+# Select baseline values between 230 and 350 seconds
+baseline_time = df_baseline["X_Value"]
+baseline_mask = (baseline_time >= 230) & (baseline_time <= 350)
+df_baseline_selected = df_baseline[baseline_mask].reset_index(drop=True)
+
+# Prepare baseline Raw object (using the same channel names as your MEG data)
+X_baseline = [df_baseline_selected[col].values for col in X_channels_names]
+Y_baseline = [df_baseline_selected[col].values for col in Y_channels_names]
+Z_baseline = [df_baseline_selected[col].values for col in Z_channels_names]
+
+# Concatenate all baseline channels (X, Y, Z) and names
+baseline_channels = X_baseline + Y_baseline + Z_baseline
+baseline_ch_names = X_channels_names + Y_channels_names + Z_channels_names
+
+raw_baseline = create_meg_raw(baseline_channels, baseline_ch_names, sfreq=375)
+# Prepare MEG Raw object for the start recording (already in pT)
+X_meg = X_channels_start_raw
+Y_meg = Y_channels_start_raw
+Z_meg = Z_channels_start_raw
+meg_channels = X_meg + Y_meg + Z_meg
+meg_ch_names = X_channels_names_raw[:20] + Y_channels_names_raw[:20] + Z_channels_names_raw[:20]
+
+raw_meg = create_meg_raw(meg_channels, meg_ch_names, sfreq=375)
+
+raw_denoised = apply_ssp_from_baseline(raw_baseline, raw_meg)
+denoised_data = raw_denoised.get_data()  # shape: (n_channels, n_times)
+# Split back into X, Y, Z lists if needed
+n = len(X_channels_names)
+X_denoised = [denoised_data[i] for i in range(n)]
+Y_denoised = [denoised_data[i+n] for i in range(n)]
+Z_denoised = [denoised_data[i+2*n] for i in range(n)]
+
+print("\n=== Plotting DENOISED MEG X and Normalized Channels ===")
+
+# Calculate norms for denoised data
+norms_denoised = calculate_channel_norms(X_denoised, Y_denoised, Z_denoised)
+
+fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+# 1. First subplot: Denoised MEG X Component
+for i, channel in enumerate(X_denoised):
+    axes[0].plot(time_start, channel, 
+                 color=colors[i], linewidth=0.6, 
+                 label=f'Channel {X_channels_names_raw[i]}')
+axes[0].set_title(f'MEG X Component - {rec1_label} - Denoised (SSP)')
+axes[0].set_ylabel('Amplitude (pT)')
+axes[0].grid(True, alpha=0.3)
+axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+# 2. Second subplot: Denoised MEG normalized channels
+for i, norm in enumerate(norms_denoised):
+    axes[1].plot(time_start, norm, 
+                 color=colors[i], linewidth=0.6,
+                 label=f'Channel {X_channels_names_raw[i]}')
+axes[1].set_title(f'MEG Vector Norm - {rec1_label} - Denoised (SSP)')
+axes[1].set_ylabel('Magnitude')
+axes[1].grid(True, alpha=0.3)
+axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+plt.tight_layout()
+plt.subplots_adjust(top=0.95)
+plt.show()
+'''
+##########################################################
+##########################################################
 
 print("\n=== Plotting Power Spectra for Normalized MEG Channels ===")
 
@@ -409,3 +487,137 @@ plot_all_channel_power_spectra(
     channel_numbers, 
     f'Vector Norm - {rec11_label}'
 )
+
+##########################################################
+
+
+# --- Select channels 3, 9, 19 for RAW data (indices 2, 8, 18) ---
+selected_indices_raw = [2, 8, 18]
+X_channels_start_raw_selected = [X_channels_start_raw[i] for i in selected_indices_raw]
+X_channels_last_raw_selected = [X_channels_last_raw[i] for i in selected_indices_raw]
+channel_labels_raw = [f"Ch {i+1}" for i in selected_indices_raw]
+
+# --- Select channels 3, 9, 19 for FILTERED data (handle exclusion) ---
+wanted_channels = [3, 9, 19]
+selected_indices_filtered = [channel_numbers.index(ch) for ch in wanted_channels]
+X_channels_start_selected = [X_channels_start[i] for i in selected_indices_filtered]
+X_channels_last_selected = [X_channels_last[i] for i in selected_indices_filtered]
+channel_labels_filtered = [f"Ch {ch}" for ch in wanted_channels]
+
+# --- Define time frames as boolean masks ---
+# For rec1 (start)
+t_1_start = (time_start >= 0) & (time_start < 10)
+t_2_start = (time_start >= 100) & (time_start < 110)
+t_3_start = (time_start >= 280) & (time_start < 290)
+time_windows_start = [t_1_start, t_2_start, t_3_start]
+
+# For rec11 (last)
+t_1_last = (time_last >= 0) & (time_last < 10)
+t_2_last = (time_last >= 100) & (time_last < 110)
+t_3_last = (time_last >= 280) & (time_last < 290)
+time_windows_last = [t_1_last, t_2_last, t_3_last]
+time_labels = ["0-10 s", "100-110 s", "280-290 s"]
+
+# Use the same colormap as before
+colors = plt.cm.rainbow(np.linspace(0, 1, 3))  # 3 channels
+
+# For rec1 raw
+plot_meg_3x3_grid(
+    X_channels_start_raw_selected,
+    np.array(time_start),
+    time_windows_start,
+    channel_labels_raw,
+    time_labels,
+    colors,
+    f"Raw MEG X Channels - {rec1_label} - Selected Channels and Time Windows"
+)
+
+# For rec1 filtered
+plot_meg_3x3_grid(
+    X_channels_start_selected,
+    np.array(time_start),
+    time_windows_start,
+    channel_labels_filtered,
+    time_labels,
+    colors,
+    f"Filtered MEG X Channels - {rec1_label} - Selected Channels and Time Windows"
+)
+
+# For rec11 raw
+plot_meg_3x3_grid(
+    X_channels_last_raw_selected,
+    np.array(time_last),
+    time_windows_last,
+    channel_labels_raw,
+    time_labels,
+    colors,
+    f"Raw MEG X Channels - {rec11_label} - Selected Channels and Time Windows"
+)
+
+# For rec11 filtered
+plot_meg_3x3_grid(
+    X_channels_last_selected,
+    np.array(time_last),
+    time_windows_last,
+    channel_labels_filtered,
+    time_labels,
+    colors,
+    f"Filtered MEG X Channels - {rec11_label} - Selected Channels and Time Windows"
+)
+
+# For normalized vector norm (example for rec1)
+# Compute vector norm for each selected filtered channel
+norms_start_selected = [
+    np.sqrt(
+        X_channels_start_selected[i]**2 +
+        Y_channels_start[selected_indices_filtered[i]]**2 +
+        Z_channels_start[selected_indices_filtered[i]]**2
+    )
+    for i in range(3)
+]
+plot_meg_3x3_grid(
+    norms_start_selected,
+    np.array(time_start),
+    time_windows_start,
+    channel_labels_filtered,
+    time_labels,
+    colors,
+    f" MEG Vector Norm - {rec1_label} - Selected Channels and Time Windows"
+)
+
+# Compute vector norm for each selected filtered channel for rec11
+norms_last_selected = [
+    np.sqrt(
+        X_channels_last_selected[i]**2 +
+        Y_channels_last[selected_indices_filtered[i]]**2 +
+        Z_channels_last[selected_indices_filtered[i]]**2
+    )
+    for i in range(3)
+]
+
+plot_meg_3x3_grid(
+    norms_last_selected,
+    np.array(time_last),
+    time_windows_last,
+    channel_labels_filtered,
+    time_labels,
+    colors,
+    f"MEG Vector Norm - {rec11_label} - Selected Channels and Time Windows"
+)
+
+##########################################################################
+# Print sample counts per window:
+
+print("rec1 (start) sample counts per window:")
+for i, mask in enumerate(time_windows_start):
+    print(f"  {time_labels[i]}: {np.sum(mask)} samples")
+for i, mask in enumerate(time_windows_start):
+    print(f"rec1 {time_labels[i]}: time range = {time_start[mask].min()} to {time_start[mask].max()}, samples = {np.sum(mask)}")
+
+print("rec11 (last) sample counts per window:")
+for i, mask in enumerate(time_windows_last):
+    print(f"  {time_labels[i]}: {np.sum(mask)} samples")
+
+
+for i, mask in enumerate(time_windows_last):
+    print(f"rec11 {time_labels[i]}: time range = {time_last[mask].min()} to {time_last[mask].max()}, samples = {np.sum(mask)}")
