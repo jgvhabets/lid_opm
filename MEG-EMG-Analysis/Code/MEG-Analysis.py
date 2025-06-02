@@ -65,6 +65,32 @@ def calculate_power_spectrum(signal):
     pos_mask = freqs >= 0
     return freqs[pos_mask], 2 * power[pos_mask]
 
+def apply_ica_picard(raw, n_components=0.99, random_state=97, max_iter=800):
+    """
+    Apply ICA with the Picard method to raw MEG data.
+
+    Args:
+        raw: MNE Raw object (unfiltered, unprocessed)
+        n_components: Number of ICA components (float for variance, int for fixed)
+        random_state: Random seed for reproducibility
+        max_iter: Maximum number of ICA iterations
+
+    Returns:
+        raw_ica: MNE Raw object after ICA artifact removal
+        ica: The fitted ICA object (for inspection)
+    """
+    raw_copy = raw.copy()
+    ica = mne.preprocessing.ICA(
+        n_components=n_components,
+        method='picard',
+        random_state=random_state,
+        max_iter=max_iter
+    )
+    ica.fit(raw_copy)
+    raw_ica = raw_copy.copy()
+    ica.apply(raw_ica)
+    return raw_ica, ica
+
 # Function for applying the filters to the data:
 
 def apply_meg_filters(data, sfreq=375):
@@ -78,7 +104,7 @@ def apply_meg_filters(data, sfreq=375):
         filtered_data: Filtered MEG signal
     """
     # Bandpass filter (1-100 Hz)
-    data_bandpass = filter_data(data, sfreq=sfreq, l_freq=3, h_freq=100, 
+    data_bandpass = filter_data(data, sfreq=sfreq, l_freq=1, h_freq=100, 
                               method='fir', verbose=False)
         
     # Apply notch filters (50 Hz and harmonics)
@@ -197,6 +223,45 @@ Y_channels_names_raw = Y_channels_names[:20]
 Z_channels_names_raw = Z_channels_names[:20] 
 
 ######################################################
+#As a part of pre-processing, we will apply ICA (indipendent component analysis) to the baseline data
+# --- ICA on raw data ---
+
+meg_channels_start_raw = X_channels_start_raw + Y_channels_start_raw + Z_channels_start_raw
+meg_ch_names_start_raw = X_channels_names_raw + Y_channels_names_raw + Z_channels_names_raw
+raw_meg_start = create_meg_raw(meg_channels_start_raw, meg_ch_names_start_raw, sfreq=375)
+
+print("\n=== Applying ICA (Picard) to raw MEG data ===")
+raw_ica_start, ica_start = apply_ica_picard(raw_meg_start)
+
+# Optionally, split back into X, Y, Z for further processing
+ica_data_start = raw_ica_start.get_data()
+n = len(X_channels_names_raw)
+X_ica_start = [ica_data_start[i] for i in range(n)]
+Y_ica_start = [ica_data_start[i+n] for i in range(n)]
+Z_ica_start = [ica_data_start[i+2*n] for i in range(n)]
+
+# --- ICA on raw data for the "last" dataset ---
+meg_channels_last_raw = X_channels_last_raw + Y_channels_last_raw + Z_channels_last_raw
+meg_ch_names_last_raw = X_channels_names_raw + Y_channels_names_raw + Z_channels_names_raw
+raw_meg_last = create_meg_raw(meg_channels_last_raw, meg_ch_names_last_raw, sfreq=375)
+
+print("\n=== Applying ICA (Picard) to raw MEG data (last) ===")
+raw_ica_last, ica_last = apply_ica_picard(raw_meg_last)
+
+# Optionally, split back into X, Y, Z for further processing
+ica_data_last = raw_ica_last.get_data()
+n_last = len(X_channels_names_raw)
+X_ica_last = [ica_data_last[i] for i in range(n_last)]
+Y_ica_last = [ica_data_last[i+n_last] for i in range(n_last)]
+Z_ica_last = [ica_data_last[i+2*n_last] for i in range(n_last)]
+
+print("Number of ICA components (start):", ica_start.n_components_)
+print("Explained variance ratio (start):", ica_start.get_explained_variance_ratio(raw_meg_start))
+print("Explained variance ratio (last):", ica_last.get_explained_variance_ratio(raw_meg_last))
+exit()
+
+######################################################
+######################################################
 
 # Exclude channels 5, 6, 13, and 20 from all components
 channels_to_exclude = [4, 5, 12, 19]
@@ -206,14 +271,14 @@ def remove_channels(channel_list, indices):
     return [channel for i, channel in enumerate(channel_list) if i not in indices] 
 
 # Remove channels from start recording
-X_channels_start = remove_channels(X_channels_start, channels_to_exclude)
-Y_channels_start = remove_channels(Y_channels_start, channels_to_exclude)
-Z_channels_start = remove_channels(Z_channels_start, channels_to_exclude)
+X_channels_start = remove_channels(X_ica_start, channels_to_exclude)
+Y_channels_start = remove_channels(Y_ica_start, channels_to_exclude)
+Z_channels_start = remove_channels(Z_ica_start, channels_to_exclude)
 
 # Remove channels from last recording
-X_channels_last = remove_channels(X_channels_last, channels_to_exclude)
-Y_channels_last = remove_channels(Y_channels_last, channels_to_exclude)
-Z_channels_last = remove_channels(Z_channels_last, channels_to_exclude)
+X_channels_last = remove_channels(X_ica_last, channels_to_exclude)
+Y_channels_last = remove_channels(Y_ica_last, channels_to_exclude)
+Z_channels_last = remove_channels(Z_ica_last, channels_to_exclude)
 
 # Remove channel names
 X_channels_names = remove_channels(X_channels_names, channels_to_exclude)
@@ -357,6 +422,79 @@ plt.tight_layout()
 plt.subplots_adjust(top=0.95)
 plt.show()
 ##########################################################
+# ICA COMPONENT PLOTS - START
+print("\n=== Plotting ICA-cleaned MEG X and Normalized Data (Selected Channels) - START ===")
+
+# Select ICA-cleaned X channels for the same indices as raw (start)
+X_ica_start_selected = [X_ica_start[i] for i in selected_indices_raw]
+Y_ica_start_selected = [Y_ica_start[i] for i in selected_indices_raw]
+Z_ica_start_selected = [Z_ica_start[i] for i in selected_indices_raw]
+
+# Compute vector norm for ICA-cleaned data (start)
+norms_ica_start_selected = [
+    np.sqrt(
+        X_ica_start_selected[i]**2 +
+        Y_ica_start_selected[i]**2 +
+        Z_ica_start_selected[i]**2
+    )
+    for i in range(3)
+]
+
+fig_ica_start, axes_ica_start = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+for i, channel in enumerate(X_ica_start_selected):
+    axes_ica_start[0].plot(time_start, channel, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
+axes_ica_start[0].set_title(f'MEG X Component - {rec1_label} - ICA-cleaned (Selected)')
+axes_ica_start[0].set_ylabel('Amplitude (pT)')
+axes_ica_start[0].grid(True, alpha=0.3)
+axes_ica_start[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+for i, norm in enumerate(norms_ica_start_selected):
+    axes_ica_start[1].plot(time_start, norm, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
+axes_ica_start[1].set_title(f'MEG Vector Norm - {rec1_label} - ICA-cleaned (Selected)')
+axes_ica_start[1].set_ylabel('Magnitude')
+axes_ica_start[1].grid(True, alpha=0.3)
+axes_ica_start[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+plt.tight_layout()
+plt.subplots_adjust(top=0.95)
+plt.show()
+
+##########################################################
+# ICA COMPONENT PLOTS - LAST
+print("\n=== Plotting ICA-cleaned MEG X and Normalized Data (Selected Channels) - LAST ===")
+
+# Select ICA-cleaned X channels for the same indices as raw (last)
+X_ica_last_selected = [X_ica_last[i] for i in selected_indices_raw]
+Y_ica_last_selected = [Y_ica_last[i] for i in selected_indices_raw]
+Z_ica_last_selected = [Z_ica_last[i] for i in selected_indices_raw]
+
+# Compute vector norm for ICA-cleaned data (last)
+norms_ica_last_selected = [
+    np.sqrt(
+        X_ica_last_selected[i]**2 +
+        Y_ica_last_selected[i]**2 +
+        Z_ica_last_selected[i]**2
+    )
+    for i in range(3)
+]
+
+fig_ica_last, axes_ica_last = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+for i, channel in enumerate(X_ica_last_selected):
+    axes_ica_last[0].plot(time_last, channel, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
+axes_ica_last[0].set_title(f'MEG X Component - {rec11_label} - ICA-cleaned (Selected)')
+axes_ica_last[0].set_ylabel('Amplitude (pT)')
+axes_ica_last[0].grid(True, alpha=0.3)
+axes_ica_last[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+for i, norm in enumerate(norms_ica_last_selected):
+    axes_ica_last[1].plot(time_last, norm, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
+axes_ica_last[1].set_title(f'MEG Vector Norm - {rec11_label} - ICA-cleaned (Selected)')
+axes_ica_last[1].set_ylabel('Magnitude')
+axes_ica_last[1].grid(True, alpha=0.3)
+axes_ica_last[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+plt.tight_layout()
+plt.subplots_adjust(top=0.95)
+plt.show()
+
 ##########################################################
 
 print("\n=== Filtering ===")
