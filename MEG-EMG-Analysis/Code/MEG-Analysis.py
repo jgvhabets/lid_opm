@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import mne
 from mne.filter import filter_data
 from mne.time_frequency import Spectrum
+from sklearn.decomposition import FastICA
 from source.ssp_function import apply_ssp_from_baseline
 from source.plot_functions import (
     calculate_individual_power_spectra,
@@ -65,33 +66,6 @@ def calculate_power_spectrum(signal):
     pos_mask = freqs >= 0
     return freqs[pos_mask], 2 * power[pos_mask]
 
-def apply_ica_picard(raw, n_components=0.99, random_state=97, max_iter=800):
-    """
-    Apply ICA with the Picard method to raw MEG data.
-
-    Args:
-        raw: MNE Raw object (unfiltered, unprocessed)
-        n_components: Number of ICA components (float for variance, int for fixed)
-        random_state: Random seed for reproducibility
-        max_iter: Maximum number of ICA iterations
-
-    Returns:
-        raw_ica: MNE Raw object after ICA artifact removal
-        ica: The fitted ICA object (for inspection)
-    """
-    raw_copy = raw.copy()
-    ica = mne.preprocessing.ICA(
-        n_components=n_components,
-        method='picard',
-        random_state=random_state,
-        max_iter=max_iter
-    )
-    
-    ica.fit(raw_copy)
-    raw_ica = raw_copy.copy()
-    ica.apply(raw_ica)
-    return raw_ica, ica
-
 # Function for applying the filters to the data:
 
 def apply_meg_filters(data, sfreq=375):
@@ -137,6 +111,26 @@ def create_meg_raw(channels, ch_names, sfreq=375):
     data = np.array(channels)
     return mne.io.RawArray(data, info, verbose=False)
 
+def apply_fastica_to_channels(channels, n_components=None, random_state=0, max_iter=1000):
+    """
+    Apply FastICA to a list of MEG channel arrays (shape: n_channels x n_times).
+    
+    Args:
+        channels: list or np.ndarray, shape (n_channels, n_times)
+        n_components: int or None, number of ICA components (default: n_channels)
+        random_state: int, random seed
+        max_iter: int, max iterations for FastICA
+        
+    Returns:
+        ica_signals: np.ndarray, shape (n_channels, n_times), ICA components
+        ica_model: fitted FastICA object
+    """
+    data = np.array(channels)
+    if n_components is None:
+        n_components = data.shape[0]
+    ica = FastICA(n_components=n_components, random_state=random_state, max_iter=max_iter)
+    ica_signals = ica.fit_transform(data.T).T  # Transpose to (n_times, n_channels), then back
+    return ica_signals, ica
 
 #################
 ### MAIN CODE ###
@@ -223,42 +217,6 @@ X_channels_names_raw = X_channels_names[:20]
 Y_channels_names_raw = Y_channels_names[:20] 
 Z_channels_names_raw = Z_channels_names[:20] 
 
-######################################################
-#As a part of pre-processing, we will apply ICA (indipendent component analysis) to the baseline data
-# --- ICA on raw data ---
-
-meg_channels_start_raw = X_channels_start_raw + Y_channels_start_raw + Z_channels_start_raw
-meg_ch_names_start_raw = X_channels_names_raw + Y_channels_names_raw + Z_channels_names_raw
-raw_meg_start = create_meg_raw(meg_channels_start_raw, meg_ch_names_start_raw, sfreq=375)
-
-print("\n=== Applying ICA (Picard) to raw MEG data ===")
-raw_ica_start, ica_start = apply_ica_picard(raw_meg_start)
-
-# Optionally, split back into X, Y, Z for further processing
-ica_data_start = raw_ica_start.get_data()
-n = len(X_channels_names_raw)
-X_ica_start = [ica_data_start[i] for i in range(n)]
-Y_ica_start = [ica_data_start[i+n] for i in range(n)]
-Z_ica_start = [ica_data_start[i+2*n] for i in range(n)]
-
-# --- ICA on raw data for the "last" dataset ---
-meg_channels_last_raw = X_channels_last_raw + Y_channels_last_raw + Z_channels_last_raw
-meg_ch_names_last_raw = X_channels_names_raw + Y_channels_names_raw + Z_channels_names_raw
-raw_meg_last = create_meg_raw(meg_channels_last_raw, meg_ch_names_last_raw, sfreq=375)
-
-print("\n=== Applying ICA (Picard) to raw MEG data (last) ===")
-raw_ica_last, ica_last = apply_ica_picard(raw_meg_last)
-
-# Optionally, split back into X, Y, Z for further processing
-ica_data_last = raw_ica_last.get_data()
-n_last = len(X_channels_names_raw)
-X_ica_last = [ica_data_last[i] for i in range(n_last)]
-Y_ica_last = [ica_data_last[i+n_last] for i in range(n_last)]
-Z_ica_last = [ica_data_last[i+2*n_last] for i in range(n_last)]
-
-print("Number of ICA components (start):", ica_start.n_components_)
-print("Explained variance ratio (start):", ica_start.get_explained_variance_ratio(raw_meg_start))
-print("Explained variance ratio (last):", ica_last.get_explained_variance_ratio(raw_meg_last))
 
 ######################################################
 ######################################################
@@ -271,14 +229,14 @@ def remove_channels(channel_list, indices):
     return [channel for i, channel in enumerate(channel_list) if i not in indices] 
 
 # Remove channels from start recording
-X_channels_start = remove_channels(X_ica_start, channels_to_exclude)
-Y_channels_start = remove_channels(Y_ica_start, channels_to_exclude)
-Z_channels_start = remove_channels(Z_ica_start, channels_to_exclude)
+X_channels_start = remove_channels(X_channels_start_raw, channels_to_exclude)
+Y_channels_start = remove_channels(Y_channels_start_raw, channels_to_exclude)
+Z_channels_start = remove_channels(Z_channels_start_raw, channels_to_exclude)
 
 # Remove channels from last recording
-X_channels_last = remove_channels(X_ica_last, channels_to_exclude)
-Y_channels_last = remove_channels(Y_ica_last, channels_to_exclude)
-Z_channels_last = remove_channels(Z_ica_last, channels_to_exclude)
+X_channels_last = remove_channels(X_channels_last_raw, channels_to_exclude)
+Y_channels_last = remove_channels(Y_channels_last_raw, channels_to_exclude)
+Z_channels_last = remove_channels(Z_channels_last_raw, channels_to_exclude)
 
 # Remove channel names
 X_channels_names = remove_channels(X_channels_names, channels_to_exclude)
@@ -303,6 +261,7 @@ Y_channels_last = [channel * 1e-12 for channel in Y_channels_last]
 Z_channels_last = [channel * 1e-12 for channel in Z_channels_last]
 
 print('Data converted to picoTesla')
+
 
 ################################ Filter the data using MNE:
 print("\nApplying filters to MEG data...")
@@ -331,6 +290,21 @@ print("Filtering complete")
 time_start = df_start["X_Value"]
 time_last = df_last["X_Value"]
 
+######################################################
+#As a part of pre-processing, we will apply ICA (indipendent component analysis) to the baseline data
+# --- ICA on filtered data ---
+
+# Apply FastICA to all filtered components (example for 'last' dataset)
+X_ica_last, ica_X = apply_fastica_to_channels(X_channels_last)
+Y_ica_last, ica_Y = apply_fastica_to_channels(Y_channels_last)
+Z_ica_last, ica_Z = apply_fastica_to_channels(Z_channels_last)
+
+# For the 'start' dataset:
+X_ica_start, ica_X_start = apply_fastica_to_channels(X_channels_start)
+Y_ica_start, ica_Y_start = apply_fastica_to_channels(Y_channels_start)
+Z_ica_start, ica_Z_start = apply_fastica_to_channels(Z_channels_start)
+
+######################################################
 ## Let's consider a smaller sample of channels for plotting
 ## In this way it's easier to visualize the data
 
@@ -371,41 +345,9 @@ norms_last_raw_selected = [
 ###  PLOTS ###
 #################
 #########################################################################
-'''
-print("\n=== Plotting RAW MEG X Components (ALL CHANNELS) - rec7 ===")
 
-n_channels = len(X_channels_last_raw)
-channel_labels = [f"Ch {i+1}" for i in range(n_channels)]
-X_raw_all = X_channels_last_raw
-X_ica_all = X_ica_last
-time = time_last
 
-colors_raw = plt.cm.rainbow(np.linspace(0, 1, n_channels))
-colors_ica = plt.cm.viridis(np.linspace(0, 1, n_channels))
 
-fig, axes = plt.subplots(2, 1, figsize=(16, 12), sharex=True)
-
-# Raw data subplot
-for i in range(n_channels):
-    axes[0].plot(time, X_raw_all[i], color=colors_raw[i], linestyle='-', linewidth=0.7, label=channel_labels[i])
-axes[0].set_title(f"MEG X Components - {rec11_label} (All Channels): Raw")
-axes[0].set_ylabel("Amplitude (pT)")
-axes[0].grid(True, alpha=0.3)
-axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-
-# ICA-cleaned data subplot
-for i in range(n_channels):
-    axes[1].plot(time, X_ica_all[i], color=colors_ica[i], linestyle='-', linewidth=0.7, label=channel_labels[i])
-axes[1].set_title(f"MEG X Components - {rec11_label} (All Channels): ICA-cleaned")
-axes[1].set_xlabel("Time (s)")
-axes[1].set_ylabel("Amplitude (pT)")
-axes[1].grid(True, alpha=0.3)
-axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-
-plt.tight_layout()
-plt.show()
-exit()
-'''
 print("\n=== Plotting MEG Raw and Normalized Data ===")
 
 # Create colormap for MEG channels
@@ -458,78 +400,72 @@ plt.subplots_adjust(top=0.95)
 plt.show()
 ##########################################################
 # ICA COMPONENT PLOTS - START
-print("\n=== Plotting ICA-cleaned MEG X and Normalized Data (Selected Channels) - START ===")
+# Example for X_ica_last (repeat for Y_ica_last, Z_ica_last)
+def plot_ica_components(ica_signals, time, axis_label, rec_label):
+    n_components = ica_signals.shape[0]
+    n_cols = 4
+    n_rows = int(np.ceil(n_components / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 2.5 * n_rows), sharex=True)
+    axes = axes.flatten()
+    for i in range(n_components):
+        axes[i].plot(time, ica_signals[i])
+        axes[i].set_title(f'ICA Component {i+1}')
+        axes[i].set_ylabel('Amplitude')
+    for i in range(n_components, len(axes)):
+        axes[i].axis('off')
+    fig.suptitle(f'ICA Components ({axis_label} axis) - {rec_label}', fontsize=16)
+    plt.xlabel('Time (s)')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show()
 
-# Select ICA-cleaned X channels for the same indices as raw (start)
-X_ica_start_selected = [X_ica_start[i] for i in selected_indices_raw]
-Y_ica_start_selected = [Y_ica_start[i] for i in selected_indices_raw]
-Z_ica_start_selected = [Z_ica_start[i] for i in selected_indices_raw]
+# Plot for X
+plot_ica_components(np.array(X_ica_last), time_last, 'X', rec11_label)
+# Plot for Y
+plot_ica_components(np.array(Y_ica_last), time_last, 'Y', rec11_label)
+# Plot for Z
+plot_ica_components(np.array(Z_ica_last), time_last, 'Z', rec11_label)
 
-# Compute vector norm for ICA-cleaned data (start)
-norms_ica_start_selected = [
-    np.sqrt(
-        X_ica_start_selected[i]**2 +
-        Y_ica_start_selected[i]**2 +
-        Z_ica_start_selected[i]**2
-    )
-    for i in range(3)
-]
+print('Analyzing ICA components...')
+print('These are the components that we will consider as artifacts:')
+print('X: C12, Y: C3, Z: C6')
+print('We will zero out these components in the next step.')
 
-fig_ica_start, axes_ica_start = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-for i, channel in enumerate(X_ica_start_selected):
-    axes_ica_start[0].plot(time_start, channel, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
-axes_ica_start[0].set_title(f'MEG X Component - {rec1_label} - ICA-cleaned (Selected)')
-axes_ica_start[0].set_ylabel('Amplitude (pT)')
-axes_ica_start[0].grid(True, alpha=0.3)
-axes_ica_start[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+# Zero out the identified artifact components
+X_ica_last_clean = X_ica_last.copy()
+Y_ica_last_clean = Y_ica_last.copy()
+Z_ica_last_clean = Z_ica_last.copy()
 
-for i, norm in enumerate(norms_ica_start_selected):
-    axes_ica_start[1].plot(time_start, norm, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
-axes_ica_start[1].set_title(f'MEG Vector Norm - {rec1_label} - ICA-cleaned (Selected)')
-axes_ica_start[1].set_ylabel('Magnitude')
-axes_ica_start[1].grid(True, alpha=0.3)
-axes_ica_start[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-plt.tight_layout()
-plt.subplots_adjust(top=0.95)
+X_ica_last_clean[11, :] = 0  # C12 (Python is 0-based index, so 12 -> 11)
+Y_ica_last_clean[2, :]  = 0  
+Z_ica_last_clean[5, :]  = 0  
+# Reconstruct the cleaned signals using the ICA model's inverse_transform
+X_channels_last_clean = ica_X.inverse_transform(X_ica_last_clean.T).T
+Y_channels_last_clean = ica_Y.inverse_transform(Y_ica_last_clean.T).T
+Z_channels_last_clean = ica_Z.inverse_transform(Z_ica_last_clean.T).T
+print('ICA components cleaned')
+
+
+# Plot comparison: Filtered vs ICA-cleaned (rec7/last)
+# Compute vector norm for each channel after ICA cleaning
+norms_last_clean = calculate_channel_norms(
+    X_channels_last_clean, Y_channels_last_clean, Z_channels_last_clean
+)
+
+# Plot power spectra for filtered (before ICA)
+plot_all_channel_power_spectra(
+    norms_last, 
+    channel_numbers, 
+    f'Vector Norm - {rec11_label} (Filtered, Before ICA)'
+)
+
+# Plot power spectra for ICA-cleaned data
+plot_all_channel_power_spectra(
+    norms_last_clean, 
+    channel_numbers, 
+    f'Vector Norm - {rec11_label} (Filtered + ICA Cleaned)'
+)
 plt.show()
-
-##########################################################
-# ICA COMPONENT PLOTS - LAST
-print("\n=== Plotting ICA-cleaned MEG X and Normalized Data (Selected Channels) - LAST ===")
-
-# Select ICA-cleaned X channels for the same indices as raw (last)
-X_ica_last_selected = [X_ica_last[i] for i in selected_indices_raw]
-Y_ica_last_selected = [Y_ica_last[i] for i in selected_indices_raw]
-Z_ica_last_selected = [Z_ica_last[i] for i in selected_indices_raw]
-
-# Compute vector norm for ICA-cleaned data (last)
-norms_ica_last_selected = [
-    np.sqrt(
-        X_ica_last_selected[i]**2 +
-        Y_ica_last_selected[i]**2 +
-        Z_ica_last_selected[i]**2
-    )
-    for i in range(3)
-]
-
-fig_ica_last, axes_ica_last = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-for i, channel in enumerate(X_ica_last_selected):
-    axes_ica_last[0].plot(time_last, channel, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
-axes_ica_last[0].set_title(f'MEG X Component - {rec11_label} - ICA-cleaned (Selected)')
-axes_ica_last[0].set_ylabel('Amplitude (pT)')
-axes_ica_last[0].grid(True, alpha=0.3)
-axes_ica_last[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-
-for i, norm in enumerate(norms_ica_last_selected):
-    axes_ica_last[1].plot(time_last, norm, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
-axes_ica_last[1].set_title(f'MEG Vector Norm - {rec11_label} - ICA-cleaned (Selected)')
-axes_ica_last[1].set_ylabel('Magnitude')
-axes_ica_last[1].grid(True, alpha=0.3)
-axes_ica_last[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-plt.tight_layout()
-plt.subplots_adjust(top=0.95)
-plt.show()
-
+exit()
 ##########################################################
 
 print("\n=== Filtering ===")
@@ -606,13 +542,14 @@ plot_all_channel_power_spectra(
     channel_numbers, 
     f'Vector Norm - {rec1_label}'
 )
-
+plt.show()
 # Plot power spectra for second recording (Vector Norm)
 plot_all_channel_power_spectra(
     norms_last, 
     channel_numbers, 
     f'Vector Norm - {rec11_label}'
 )
+plt.show()
 
 ##########################################################
 
