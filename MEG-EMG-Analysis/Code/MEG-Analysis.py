@@ -403,16 +403,14 @@ plt.show()
 # Example for X_ica_last (repeat for Y_ica_last, Z_ica_last)
 def plot_ica_components(ica_signals, time, axis_label, rec_label):
     n_components = ica_signals.shape[0]
-    n_cols = 4
-    n_rows = int(np.ceil(n_components / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 2.5 * n_rows), sharex=True)
-    axes = axes.flatten()
+    n_cols = 1
+    n_rows = n_components
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 2.2 * n_rows), sharex=True)
+    if n_components == 1:
+        axes = [axes]
     for i in range(n_components):
         axes[i].plot(time, ica_signals[i])
-        axes[i].set_title(f'ICA Component {i+1}')
-        axes[i].set_ylabel('Amplitude')
-    for i in range(n_components, len(axes)):
-        axes[i].axis('off')
+        axes[i].set_ylabel(f'C{i+1}')
     fig.suptitle(f'ICA Components ({axis_label} axis) - {rec_label}', fontsize=16)
     plt.xlabel('Time (s)')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
