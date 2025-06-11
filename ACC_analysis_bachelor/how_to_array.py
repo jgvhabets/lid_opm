@@ -72,25 +72,25 @@ plt.show()
 
 
 # testing signals with two boxes:
-#file = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/Accelerometer/Test_Accelerometer_2025-04-29_12-43-27_two_boxes_test.cnt", preload=True)
-#custom_order_names = ["BIP6", "BIP1", "BIP2", "BIP9", "BIP10", "BIP11"]
-#
-#data, times = file[custom_order_names, : ]
-#
-#data_notched = mne.filter.notch_filter(data, freqs=[50, 100, 150], Fs=1000)
-#two_box = mne.filter.filter_data(data_notched, sfreq = 1000, l_freq=2, h_freq=None)
-#two_box[0, :] *= -1
-#
-#fig, axs = plt.subplots(2, 3, figsize=(15,8))
-#axs = axs.ravel()
-#for idx, channel_name in enumerate(custom_order_names):
-#    axs[idx].plot(times, two_box[idx], "r", linewidth=1)
-#    #axs[idx].set_title(f"{channel_name} - {file.ch_names[file.ch_names.index(channel_name)]}")
-#
-#    axs[idx].set_title(f"{channel_name}")
-#    axs[idx].set_xlabel('Time (s)')
-#    axs[idx].grid(True)
-#
-#plt.tight_layout()
-#plt.show()
+file = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/Accelerometer/Test_Accelerometer_2025-04-29_12-43-27_two_boxes_test.cnt", preload=True)
+custom_order_names = ["BIP6", "BIP1", "BIP2", "BIP9", "BIP10", "BIP11"]
+
+data, times = file[custom_order_names, : ]
+
+data_notched = mne.filter.notch_filter(data, freqs=[50, 100, 150], Fs=1000)
+two_box = mne.filter.filter_data(data_notched, sfreq = 1000, l_freq=2, h_freq=None)
+two_box[0, :] *= -1
+
+fig, axs = plt.subplots(2, 3, figsize=(15,8))
+axs = axs.ravel()
+for idx, channel_name in enumerate(custom_order_names):
+    axs[idx].plot(times, two_box[idx], "r", linewidth=1)
+    #axs[idx].set_title(f"{channel_name} - {file.ch_names[file.ch_names.index(channel_name)]}")
+
+    axs[idx].set_title(f"{channel_name}")
+    axs[idx].set_xlabel('Time (s)')
+    axs[idx].grid(True)
+
+plt.tight_layout()
+plt.show()
 
