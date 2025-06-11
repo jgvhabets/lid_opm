@@ -15,7 +15,11 @@ for name in names:
     filepath = f"{source_folder}/{name}"
     filepaths.append(filepath)
 
-print(filepaths)
+raw = mne.io.read_raw_kit(filepaths[0], preload=True)
+plt.plot(raw.times[:10000], raw.get_data(picks=['E09'])[0][:10000])
+plt.title("E05: Check for flat peaks (saturation)")
+plt.ylabel("Amplitude (V)")
+plt.show()
 
 def apply_filter(data, sfreq, l_freq, h_freq):
     """Apply bandpass filter to data using MNE"""
@@ -35,6 +39,12 @@ def extract_con_data(file):
     # Read the .con file
     raw = mne.io.read_raw_kit(file, preload=True)
     channels = raw.ch_names
+    print(channels)
+
+    print(f"\nFile: {file}")
+    for ch in ["E05", "E09", "E08", "E11", "E13"]:
+        data = raw.get_data(picks=[ch])[0]
+        print(f"{ch}: min={data.min():.2e} V, max={data.max():.2e} V")
 
     # Define channel mappings
     emg_channels = {'right_arm':'E05',
@@ -66,15 +76,15 @@ def extract_con_data(file):
 
             ch1 = raw.get_data(picks=[channels[0]])[0]
             ch2 = raw.get_data(picks=[channels[1]])[0]
-            ch1_filtered = apply_filter(ch1, raw.info['sfreq'], 2, 248)
-            ch2_filtered = apply_filter(ch2, raw.info['sfreq'], 2, 248)
+            ch1_filtered = apply_filter(ch1, raw.info['sfreq'], 10, 249)
+            ch2_filtered = apply_filter(ch2, raw.info['sfreq'], 10, 249)
             emg_data[location] = ch1_filtered - ch2_filtered
 
 
         else:
 
             data = raw.get_data(picks=[channels])[0]
-            emg_data[location] = apply_filter(data, raw.info['sfreq'], 2, 248)
+            emg_data[location] = apply_filter(data, raw.info['sfreq'], 10, 249)
 
 
     # Extract and filter ACC data
@@ -85,37 +95,89 @@ def extract_con_data(file):
 
         acc_data[axis] = apply_filter(data, raw.info['sfreq'], 2, 48)
 
+    for location in emg_data:
+        emg_data[location] *= 1e6
 
     # Get filtered EEG
     eeg_data = raw_filtered.get_data(picks=eeg_picks)
 
     return emg_data, acc_data, eeg_data
 
-
-all_recs_left_arm = []
 for filepath in filepaths:
-    emg_data, acc_data, eeg_data  = extract_con_data(filepath)
-    all_recs_left_arm.append(emg_data["left_arm"])
+    extract_con_data(filepath)
 
-print(all_recs_left_arm)
 
-absolutes = [abs(rec) for rec in all_recs_left_arm]
-print(absolutes)
-for i, arr in enumerate(absolutes):
-    print(f"Recording {i+1} has {sum(arr < 0)} negative values")
+def plot_errorbar(location):
+    absolutes = []
+    for filepath in filepaths:
+        emg_data, _, _ = extract_con_data(filepath)
+        absolutes.append(np.abs(emg_data[location]))
 
-means = [np.mean(absolute) for absolute in absolutes]
-stds = [np.std(absolute) for absolute in absolutes]
+    means = [np.mean(rec) for rec in absolutes]
+    stds = [np.std(rec) for rec in absolutes]
 
-x_labels = [f"Recording{i}" for i in [1, 3, 5, 7, 9, 11]]
-x_pos = np.arange(len(absolutes))
+    plt.figure()
+    plt.figure()
+    plt.errorbar(x=range(len(means)), y=means, yerr=stds, fmt='o', label=location,
+               markersize=8, capsize=5, capthick=2)
+    plt.title("Errorbars of EMG values (left arm) of progressing (rest) recordings")
+    plt.xticks(ticks=range(len(means)), labels=["rec01", "rec03", "rec05", "rec07", "rec09", "rec11"])
+    plt.ylabel("mean + std of measurement")
+    plt.tight_layout()
+    plt.show()
 
-plt.figure()
-plt.errorbar(x_pos, means, yerr=stds, fmt='o',
-             markersize=8, capsize=5, capthick=2)
-plt.title("Errorbars of EMG values (left arm) of progressing (rest) recordings")
-plt.xticks(x_pos, x_labels, rotation=45)
-plt.ylabel("mean + std of measurement")
+plot_errorbar("left_arm")
+
+
+
+def rest_recordings_df(location):
+    absolutes = []
+    columns = ["rest_rec01", "rest_rec03", "rest_rec05", "rest_rec07", "rest_rec09", "rest_rec11"]
+    for i, filepath in enumerate(filepaths):
+        emg_data, _, _  = extract_con_data(filepath)
+        absolute = np.abs(emg_data[location])
+        df= pd.DataFrame({
+            "emg_value": absolute,
+            "recording": columns[i],
+            "location": location
+        })
+        absolutes.append(df)
+    return pd.concat(absolutes)
+
+rest_recs_left_arm = rest_recordings_df("left_arm")
+rest_recs_left_leg = rest_recordings_df("left_leg")
+
+all_locs = pd.concat([rest_recs_left_arm, rest_recs_left_leg])
+
+#x_labels = [f"Recording{i}" for i in [1, 3, 5, 7, 9, 11]]
+#x_pos = np.arange(len(absolutes))
+
+#lt.figure()
+#lt.errorbar(x_pos, means, yerr=stds, fmt='o',
+#            markersize=8, capsize=5, capthick=2)
+#lt.title("Errorbars of EMG values (left arm) of progressing (rest) recordings")
+#lt.xticks(6, x_labels, rotation=45)
+#lt.ylabel("mean + std of measurement")
+#lt.tight_layout()
+#lt.show()
+
+plt.figure(figsize=(12, 6))
+sns.violinplot(
+    data=all_locs,
+    x='recording',
+    y='emg_value',
+    hue='location',
+    split=True,
+    inner='quartile',
+    palette='pastel'
+)
+
+plt.title("EMG Signal Distribution by Recording and Location")
+plt.xlabel("Recording Session")
+plt.ylabel("Absolute EMG Value (µV)")
+plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
+
+
 
