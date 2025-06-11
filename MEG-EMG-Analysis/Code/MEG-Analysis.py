@@ -86,6 +86,7 @@ def apply_ica_picard(raw, n_components=0.99, random_state=97, max_iter=800):
         random_state=random_state,
         max_iter=max_iter
     )
+    
     ica.fit(raw_copy)
     raw_ica = raw_copy.copy()
     ica.apply(raw_ica)
@@ -258,7 +259,6 @@ Z_ica_last = [ica_data_last[i+2*n_last] for i in range(n_last)]
 print("Number of ICA components (start):", ica_start.n_components_)
 print("Explained variance ratio (start):", ica_start.get_explained_variance_ratio(raw_meg_start))
 print("Explained variance ratio (last):", ica_last.get_explained_variance_ratio(raw_meg_last))
-exit()
 
 ######################################################
 ######################################################
@@ -371,6 +371,41 @@ norms_last_raw_selected = [
 ###  PLOTS ###
 #################
 #########################################################################
+'''
+print("\n=== Plotting RAW MEG X Components (ALL CHANNELS) - rec7 ===")
+
+n_channels = len(X_channels_last_raw)
+channel_labels = [f"Ch {i+1}" for i in range(n_channels)]
+X_raw_all = X_channels_last_raw
+X_ica_all = X_ica_last
+time = time_last
+
+colors_raw = plt.cm.rainbow(np.linspace(0, 1, n_channels))
+colors_ica = plt.cm.viridis(np.linspace(0, 1, n_channels))
+
+fig, axes = plt.subplots(2, 1, figsize=(16, 12), sharex=True)
+
+# Raw data subplot
+for i in range(n_channels):
+    axes[0].plot(time, X_raw_all[i], color=colors_raw[i], linestyle='-', linewidth=0.7, label=channel_labels[i])
+axes[0].set_title(f"MEG X Components - {rec11_label} (All Channels): Raw")
+axes[0].set_ylabel("Amplitude (pT)")
+axes[0].grid(True, alpha=0.3)
+axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+# ICA-cleaned data subplot
+for i in range(n_channels):
+    axes[1].plot(time, X_ica_all[i], color=colors_ica[i], linestyle='-', linewidth=0.7, label=channel_labels[i])
+axes[1].set_title(f"MEG X Components - {rec11_label} (All Channels): ICA-cleaned")
+axes[1].set_xlabel("Time (s)")
+axes[1].set_ylabel("Amplitude (pT)")
+axes[1].grid(True, alpha=0.3)
+axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+plt.tight_layout()
+plt.show()
+exit()
+'''
 print("\n=== Plotting MEG Raw and Normalized Data ===")
 
 # Create colormap for MEG channels
