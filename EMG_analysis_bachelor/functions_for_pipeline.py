@@ -1,13 +1,10 @@
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import mne
 from scipy.signal import butter, sosfiltfilt
 import matplotlib
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
-
-# here, I will write the functions that I can then use in the pipeline (to spare some space)
 
 def create_df(data, column_names, times):
     df = pd.DataFrame(data.T, columns=column_names)
@@ -23,10 +20,6 @@ def notched(df, all_columns, times):
     notched_df["Time (s)"] = times
     return notched_df
 
-def bandpass_filter(data, sampling_rate, low_freq, high_freq):
-    bandpassed_data = mne.filter.filter_data(data, sfreq=sampling_rate, l_freq=low_freq, h_freq=high_freq)
-    return bandpassed_data
-
 def filtered(notched_dataframe, all_columns, acc_columns, emg_columns, times):
     filtered_df = notched_dataframe.copy()
     for col in all_columns:
@@ -37,32 +30,12 @@ def filtered(notched_dataframe, all_columns, acc_columns, emg_columns, times):
 
         if col in emg_columns:
             col_data = notched_dataframe[col].to_numpy()
-            col_filtered = mne.filter.filter_data(col_data, sfreq=1000, l_freq=30, h_freq=480)
+            col_filtered = mne.filter.filter_data(col_data, sfreq=1000, l_freq=30, h_freq=300)
             filtered_df[col] = col_filtered
         else:
             continue
     filtered_df["Time (s)"] = times
-    return filtered_df # könnte das auch noch flexibler machen mit h_freq und l_freq indem ich ne liste als input tu und dann [0]und[1]!
-
-def create_filtered_df(data, columns, times):
-    filtered_df = pd.DataFrame(data.T, columns=columns)
-    filtered_df["Time (s)"] = times
-    return filtered_df
-
-def plot_filtered_signals(channels, filtered_df, location, emg):
-    fig, axs = plt.subplots(3, 3, figsize=(12, 8))
-    axs = axs.ravel()
-    for i, channel in enumerate(channels):
-        axs[i].plot(filtered_df["Time (s)"], filtered_df[channel])
-        axs[i].set_title(f"{channel} : signal of {location[channel]}")
-        axs[i].set_xlabel("Time (s)")
-        axs[i].set_ylabel("Amplitude (V)" if channel in emg else "g")
-
-        #if len(axs) > len(channels):
-        #    axs[-1].axis("off")
-
-    plt.tight_layout()
-    plt.show()
+    return filtered_df #könnte das auch noch flexibler machen mit h_freq und l_freq indem ich ne liste als input tu und dann [0]und[1]!
 
 def plot_channel_overview(channels, df, title_name, location, emg): # only this function is needed right? does the same thing!! delete others?
     fig, axs = plt.subplots(3, 3, figsize=(12, 8))
@@ -79,7 +52,6 @@ def plot_channel_overview(channels, df, title_name, location, emg): # only this 
 
     plt.tight_layout()
     plt.show()
-
 
 def envelope(df, all_columns, emg_columns, times, freq):
     emg_envelope_df = df.copy()
@@ -120,8 +92,5 @@ def get_ch_indices(all_columns, emg, acc):
 
 
 
-# df_raw = pd.DataFrame(.... [])
-#
-# df_filter = df_raw.copy()
 # df_filte[acc_cols] = df_raw[acc_cols].apply(filter_f, min_f = 10, max_f = 1000)
 # df_filter[meg_cols]
