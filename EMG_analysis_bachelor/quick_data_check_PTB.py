@@ -5,12 +5,12 @@ import mne
 from mne.viz.utils import plt_show
 from seaborn import color_palette
 
-forearm_upperside = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG/test_first_2025-04-07_14-10-04_forearm_upperSide.cnt", preload=True)
-forearm_downside = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG/test_first_2025-04-07_14-23-02_forearm_UnderSide.cnt", preload=True)
-test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/PTB_measurement_14.04/Bonato_Federico_2025-04-14_13-02-56.cnt", preload=True)
-#test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/PTB_measurement_14.04/Bonato_Federico_2025-04-14_13-02-56_NO_post_proc.cnt", preload=True)
+#forearm_upperside = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG/test_first_2025-04-07_14-10-04_forearm_upperSide.cnt", preload=True)
+#forearm_downside = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG/test_first_2025-04-07_14-23-02_forearm_UnderSide.cnt", preload=True)
+#test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/PTB_measurement_14.04/Bonato_Federico_2025-04-14_13-02-56.cnt", preload=True)
+two_cha_acc = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/Accelerometer/Test_Two_Charite_ACC_2025-06-10_11-53-04.cnt", preload=True)
 
-test = test.notch_filter(picks=["BIP7", "BIP8"], freqs=50)
+test = two_cha_acc.notch_filter(picks=["BIP1", "BIP2", "BIP3", "BIP4", "BIP5", "BIP6"], freqs=50)
 
 import matplotlib
 matplotlib.use('Qt5Agg')
