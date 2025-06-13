@@ -119,140 +119,92 @@ def plot_all_channel_power_spectra(channels, channel_names, title, sfreq=375, wi
     plt.xlim(freq_range)
     plt.legend(loc='upper right', fontsize='small', ncol=2)
     plt.tight_layout()
-    plt.show()
 
-    
-def plot_meg_spectrogram(channel, channel_name, time_data, title, sfreq=375, 
-                         window_length=1.0, overlap=0.5, freq_range=(1, 100)):
-    """
-    Plot a time-frequency spectrogram for a single MEG channel.
-    
-    Args:
-        channel: Input signal array for a single channel
-        channel_name: Name or number of the channel
-        time_data: Time data for signal duration
-        title: Plot title
-        sfreq: Sampling frequency in Hz (default: 375 Hz)
-        window_length: Length of each window in seconds (default: 1.0 sec)
-        overlap: Overlap between windows as a fraction (default: 0.5 for 50%)
-        freq_range: Tuple of (min_freq, max_freq) to display
-    """
-    # Calculate window parameters in samples
-    window_samples = int(window_length * sfreq)
-    step_samples = int(window_samples * (1 - overlap))
-    
-    # Calculate spectrogram using sliding windows
-    freqs, all_psds, window_times = calculate_individual_power_spectra(channel, sfreq, 
-                                                                      window_length, overlap)
-    
-    # Convert list of PSDs to array for plotting
-    psd_array = np.array(all_psds)
-    
-    # Get frequency indices within our range
-    freq_mask = (freqs >= freq_range[0]) & (freqs <= freq_range[1])
-    plot_freqs = freqs[freq_mask]
-    plot_psd = psd_array[:, freq_mask]
-    
-    # Create figure
-    fig, ax = plt.subplots(figsize=(12, 8))
-    
-    # Create log-scaled power values for better visualization
-    with np.errstate(divide='ignore'):  # Suppress divide by zero warnings
-        log_psd = 10 * np.log10(plot_psd)
-    
-    # Plot spectrogram using imshow
-    im = ax.imshow(
-        log_psd.T,  # Transpose to get time on x-axis, freq on y-axis
-        aspect='auto',
-        origin='lower',
-        extent=[window_times[0], window_times[-1], plot_freqs[0], plot_freqs[-1]],
-        cmap='viridis',
-        interpolation='nearest'
-    )
-    
-    # Add colorbar
-    cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Power (dB)')
-    
-    # Add labels and title
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Frequency (Hz)')
-    ax.set_title(f'Spectrogram - Channel {channel_name} - {title}')
-    
-    # Add grid
-    ax.grid(False)
-    
-    plt.tight_layout()
-    plt.show()
-    
-    return fig
 
-# Function to create component subplot
-def plot_component_comparison(channels_start, channels_last, component_name, channel_names, rec1_label, rec11_label):
-    # Calculate grid layout
-    n_channels = len(channel_names)
-    n_cols = 5
-    n_rows = (n_channels + n_cols - 1) // n_cols
-    
-    # Create figure and subplots
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 15), layout="constrained")
-    axes = axes.flatten()
-    
-    for i in range(n_channels):
-        # Plot both recordings on the same subplot
-        axes[i].plot(time_start, channels_start[i], color='#1f77b4', 
-                    label=rec1_label, linewidth=1.5, alpha=0.8)
-        axes[i].plot(time_last, channels_last[i], color='#ff7f0e', 
-                    label=rec11_label, linewidth=1.5, alpha=0.7)
-        
-        # Add title and labels
-        axes[i].set_title(f'Channel {channel_names[i]}', fontsize=7)
-        axes[i].grid(True, alpha=0.3)
-        
-        # Add legend only for first subplot
-        if i == 0:
-            axes[i].legend()
-        
-        # Add y-label for leftmost plots
-        if i % n_cols == 0:
-            axes[i].set_ylabel('Magnitude (pT)')
-        
-        # Add x-label for bottom plots
-        if i >= n_channels - n_cols:
-            axes[i].set_xlabel('Time (sec)')
-    
-    # Hide unused subplots
-    for i in range(n_channels, len(axes)):
-        axes[i].set_visible(False)
-    
-    plt.suptitle(f'{component_name} Component Comparison: {rec1_label} vs {rec11_label}', fontsize=8)
-    plt.tight_layout()
-    plt.show()
-
-def plot_meg_3x3_grid(
-    data_list,           # list of 3 arrays (channels)
+def plot_meg_2x3_grid(
+    data_list_A,         # list of arrays (channels) for dataset A
+    data_list_B,         # list of arrays (channels) for dataset B
     time_vector,         # time array (np.array or pd.Series)
     time_windows,        # list of 3 boolean masks
-    channel_labels,      # list of 3 channel labels
+    channel_labels_A,    # list of channel labels for dataset A
+    channel_labels_B,    # list of channel labels for dataset B
     time_labels,         # list of 3 time window labels
-    colors,              # list/array of 3 colors
-    suptitle             # string for the figure title
+    colors_A,            # list/array of colors for dataset A
+    colors_B,            # list/array of colors for dataset B
+    suptitle_A,          # string for the first row title
+    suptitle_B,          # string for the second row title
+    fig_title            # string for the figure title
 ):
     """
-    Plot a 3x3 grid: columns=channels, rows=time windows.
+    Plot a 2x3 grid: columns=time windows, rows=datasets (A, B).
+    Each subplot overlays all channels for the selected time window.
+    Only the first subplot of each row shows the legend with channel labels.
+    Handles different numbers of channels in A and B.
     """
-    fig, axes = plt.subplots(3, 3, figsize=(15, 10), sharex=False)
-    for row, t_mask in enumerate(time_windows):
-        for col, (ch_data, ch_label) in enumerate(zip(data_list, channel_labels)):
-            axes[row, col].plot(time_vector[t_mask], ch_data[t_mask], color=colors[col])
-            if row == 0:
-                axes[row, col].set_title(ch_label)
-            if col == 0:
-                axes[row, col].set_ylabel('Amplitude (pT)')
-            if row == 2:
-                axes[row, col].set_xlabel('Time (sec)')
-            axes[row, col].grid(True, alpha=0.3)
-    plt.suptitle(suptitle, fontsize=16)
+    fig, axes = plt.subplots(2, 3, figsize=(15, 7), sharex=False)
+    n_channels_A = len(data_list_A)
+    n_channels_B = len(data_list_B)
+    for col, time_label in enumerate(time_labels):
+        t_mask = time_windows[col]
+        # First row: Dataset A (overlay all channels)
+        for ch_idx in range(n_channels_A):
+            label = channel_labels_A[ch_idx] if (col == 0 and ch_idx < len(channel_labels_A)) else None
+            axes[0, col].plot(
+                time_vector[t_mask],
+                data_list_A[ch_idx][t_mask],
+                color=colors_A[ch_idx % len(colors_A)],
+                alpha=0.7,
+                label=label
+            )
+        axes[0, col].set_title(f"{time_label}")
+        axes[0, col].set_ylabel(suptitle_A)
+        axes[0, col].grid(True, alpha=0.3)
+        if col == 0:
+            axes[0, col].legend(fontsize=8, loc='upper right')
+        # Second row: Dataset B (overlay all channels)
+        for ch_idx in range(n_channels_B):
+            label = channel_labels_B[ch_idx] if (col == 0 and ch_idx < len(channel_labels_B)) else None
+            axes[1, col].plot(
+                time_vector[t_mask],
+                data_list_B[ch_idx][t_mask],
+                color=colors_B[ch_idx % len(colors_B)],
+                alpha=0.7,
+                label=label
+            )
+        axes[1, col].set_ylabel(suptitle_B)
+        axes[1, col].grid(True, alpha=0.3)
+        if col == 0:
+            axes[1, col].legend(fontsize=8, loc='upper right')
+        axes[1, col].set_xlabel('Time (sec)')
+    plt.suptitle(fig_title, fontsize=16)
     plt.tight_layout()
-    plt.subplots_adjust(top=0.9)
+    plt.subplots_adjust(top=0.88)
+    plt.show()
+
+def plot_channels_comparison(
+    time, raw_channels, filtered_channels, raw_labels, filtered_labels, colors, 
+    rec_label, y_label="Amplitude (pT)", axis_label="X"
+):
+    """
+    Plot selected raw and filtered MEG channels in two vertically stacked subplots.
+    """
+    n_raw = min(len(raw_channels), len(colors), len(raw_labels))
+    n_filtered = min(len(filtered_channels), len(colors), len(filtered_labels))
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+    # Raw
+    for i in range(n_raw):
+        axes[0].plot(time, raw_channels[i], color=colors[i], linewidth=0.6, label=raw_labels[i])
+    axes[0].set_title(f'MEG {axis_label} Component - {rec_label} - Raw (Selected)')
+    axes[0].set_ylabel(y_label)
+    axes[0].grid(True, alpha=0.3)
+    axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    # Filtered
+    for i in range(n_filtered):
+        axes[1].plot(time, filtered_channels[i], color=colors[i], linewidth=0.6, label=filtered_labels[i])
+    axes[1].set_title(f'MEG {axis_label} Component - {rec_label} - Filtered (Selected)')
+    axes[1].set_ylabel(y_label)
+    axes[1].grid(True, alpha=0.3)
+    axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.95)
     plt.show()
