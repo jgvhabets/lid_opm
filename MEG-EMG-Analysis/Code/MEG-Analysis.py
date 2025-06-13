@@ -13,9 +13,8 @@ from source.ssp_function import apply_ssp_from_baseline
 from source.plot_functions import (
     calculate_individual_power_spectra,
     plot_all_channel_power_spectra,
-    plot_meg_spectrogram,
-    plot_component_comparison,
-    plot_meg_3x3_grid
+    plot_meg_2x3_grid,
+    plot_channels_comparison
 )
 
 #######################################################
@@ -131,6 +130,21 @@ def apply_fastica_to_channels(channels, n_components=None, random_state=0, max_i
     ica = FastICA(n_components=n_components, random_state=random_state, max_iter=max_iter)
     ica_signals = ica.fit_transform(data.T).T  # Transpose to (n_times, n_channels), then back
     return ica_signals, ica
+
+def plot_ica_components(ica_signals, time, axis_label, rec_label):
+    n_components = ica_signals.shape[0]
+    n_cols = 1
+    n_rows = n_components
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 2.2 * n_rows), sharex=True)
+    if n_components == 1:
+        axes = [axes]
+    for i in range(n_components):
+        axes[i].plot(time, ica_signals[i])
+        axes[i].set_ylabel(f'C{i+1}')
+    fig.suptitle(f'ICA Components ({axis_label} axis) - {rec_label}', fontsize=16)
+    plt.xlabel('Time (s)')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show()
 
 #################
 ### MAIN CODE ###
@@ -354,67 +368,163 @@ print("\n=== Plotting MEG Raw and Normalized Data ===")
 n_raw = len(X_channels_names_raw)
 n_channels = n_raw +1
 colors = plt.cm.rainbow(np.linspace(0, 1, 3))  # 3 channels
+# Create colormaps for MEG channels
+colors_all = plt.cm.rainbow(np.linspace(0, 1, len(X_channels_start_raw)))
+colors_filtered_start = plt.cm.rainbow(np.linspace(0, 1, len(X_channels_start)))
+colors_filtered_last = plt.cm.rainbow(np.linspace(0, 1, len(X_channels_last)))
 
-# RAW rec1
-fig_raw, axes_raw = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-for i, channel in enumerate(X_channels_start_raw_selected):
-    axes_raw[0].plot(time_start, channel, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
-axes_raw[0].set_title(f'MEG X Component - {rec1_label} - Raw (Selected)')
-axes_raw[0].set_ylabel('Amplitude (pT)')
-axes_raw[0].grid(True, alpha=0.3)
-axes_raw[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+# Plot all channels for rec1 (start)
+plot_channels_comparison(
+    time_start,
+    X_channels_start_raw,
+    X_channels_start,
+    X_channels_names_raw,
+    X_channels_names,
+    colors_all,
+    rec1_label,
+    y_label="Amplitude (pT)",
+    axis_label="X"
+)
+# Plot all channels for rec11 (last)
+plot_channels_comparison(
+    time_last,
+    X_channels_last_raw,
+    X_channels_last,
+    X_channels_names_raw,
+    X_channels_names,
+    colors_all,
+    rec11_label,
+    y_label="Amplitude (pT)",
+    axis_label="X"
+)
+########################################
+# Plot selected channels for rec1 (start)
+plot_channels_comparison(
+    time_start,
+    X_channels_start_raw_selected,
+    X_channels_start_selected,
+    channel_labels_raw,
+    channel_labels_filtered,
+    colors,
+    rec1_label,
+    y_label="Amplitude (pT)",
+    axis_label="X"
+)
+# Plot selected channels for rec11 (last)
+plot_channels_comparison(
+    time_last,
+    X_channels_last_raw_selected,
+    X_channels_last_selected,
+    channel_labels_raw,
+    channel_labels_filtered,
+    colors,
+    rec11_label,
+    y_label="Amplitude (pT)",
+    axis_label="X"
+)
 
-for i, norm in enumerate(norms_start_raw_selected):
-    axes_raw[1].plot(time_start, norm, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
-axes_raw[1].set_title(f'MEG Vector Norm - {rec1_label} - Raw (Selected)')
-axes_raw[1].set_ylabel('Magnitude')
-axes_raw[1].grid(True, alpha=0.3)
-axes_raw[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-plt.tight_layout()
-plt.subplots_adjust(top=0.95)
-
-# RAW rec11
-fig_raw, axes_raw = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-for i, channel in enumerate(X_channels_last_raw_selected):
-    axes_raw[0].plot(time_last, channel, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
-axes_raw[0].set_title(f'MEG X Component - {rec11_label} - Raw (Selected)')
-axes_raw[0].set_ylabel('Amplitude (pT)')
-axes_raw[0].grid(True, alpha=0.3)
-axes_raw[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-norms_last_raw_selected = [
-    np.sqrt(
-        X_channels_last_raw_selected[i]**2 +
-        Y_channels_last_raw[selected_indices_raw[i]]**2 +
-        Z_channels_last_raw[selected_indices_raw[i]]**2
-    )
-    for i in range(3)
-]
-for i, norm in enumerate(norms_last_raw_selected):
-    axes_raw[1].plot(time_last, norm, color=colors[i], linewidth=0.6, label=channel_labels_raw[i])
-axes_raw[1].set_title(f'MEG Vector Norm - {rec11_label} - Raw (Selected)')
-axes_raw[1].set_ylabel('Magnitude')
-axes_raw[1].grid(True, alpha=0.3)
-axes_raw[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-plt.tight_layout()
-plt.subplots_adjust(top=0.95)
-plt.show()
 ##########################################################
-# ICA COMPONENT PLOTS - START
-# Example for X_ica_last (repeat for Y_ica_last, Z_ica_last)
-def plot_ica_components(ica_signals, time, axis_label, rec_label):
-    n_components = ica_signals.shape[0]
-    n_cols = 1
-    n_rows = n_components
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 2.2 * n_rows), sharex=True)
-    if n_components == 1:
-        axes = [axes]
-    for i in range(n_components):
-        axes[i].plot(time, ica_signals[i])
-        axes[i].set_ylabel(f'C{i+1}')
-    fig.suptitle(f'ICA Components ({axis_label} axis) - {rec_label}', fontsize=16)
-    plt.xlabel('Time (s)')
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.show()
+##########################################################
+
+
+# --- Define time frames as boolean masks ---
+# For rec1 (start)
+t_1_start = (time_start >= 5) & (time_start < 15)
+t_2_start = (time_start >= 100) & (time_start < 110)
+t_3_start = (time_start >= 280) & (time_start < 290)
+time_windows_start = [t_1_start, t_2_start, t_3_start]
+
+# For rec11 (last)
+t_1_last = (time_last >= 0) & (time_last < 10)
+t_2_last = (time_last >= 100) & (time_last < 110)
+t_3_last = (time_last >= 280) & (time_last < 290)
+time_windows_last = [t_1_last, t_2_last, t_3_last]
+time_labels = ["0-10 s", "100-110 s", "280-290 s"]
+
+#############################################################
+# The following grid plots allow visual comparison of MEG signals before and after filtering.
+# Each 2x3 grid figure shows three different time windows(t_1, t_2, t_3) (columns):
+# the first two figures, consider all channels, while the other two show only the selected channels (3, 9, 19).
+# The first row in each grid shows the raw (unfiltered) data, while the second row shows the filtered data.
+# This is done for both the initial (rec1) and final (rec11) recordings.
+
+# PLOTTING THE GRID WITH ALL CHANNELS:
+# Create colormap for MEG channels
+colors_all = plt.cm.rainbow(np.linspace(0, 1, len(X_channels_start_raw)))
+colors_selected = plt.cm.rainbow(np.linspace(0, 1, len(X_channels_start_raw_selected)))
+
+# For rec1 (start) - ALL CHANNELS
+plot_meg_2x3_grid(
+    X_channels_start_raw,
+    X_channels_start,
+    time_start,
+    time_windows_start,
+    [],  # No labels for raw channels
+    [],  # No labels for filtered channels
+    time_labels,
+    colors_all,
+    colors_filtered_start,
+    f'Raw {rec1_label}', f'Filtered {rec1_label}',
+    f'Raw vs Filtered {rec1_label} - All Channels'
+)
+
+# For rec11 (last) - ALL CHANNELS
+plot_meg_2x3_grid(
+    X_channels_last_raw,
+    X_channels_last,
+    time_last,
+    time_windows_last,
+    [],  # No labels for raw channels
+    [],  # No labels for filtered channels
+    time_labels,
+    colors_all,
+    colors_filtered_last,
+    f'Raw {rec11_label}', f'Filtered {rec11_label}',
+    f'Raw vs Filtered {rec11_label} - All Channels'
+)
+
+# No channel labels here to keep the figure uncluttered
+
+#############################################################
+# PLOTTING THE GRID JUST FOR CHANNELS 3, 9, 19 (indices 2, 8, 18)
+# For rec1 (start) - SELECTED CHANNELS
+plot_meg_2x3_grid(
+    X_channels_start_raw_selected,
+    X_channels_start_selected,
+    time_start,
+    time_windows_start,
+    channel_labels_filtered,
+    channel_labels_filtered,
+    time_labels,
+    colors_selected,
+    colors_selected,
+    "Raw (rec1)", "Filtered (rec1)",
+    "Raw vs Filtered (rec1) - Selected Channels"
+)
+
+# For rec11 (last) - SELECTED CHANNELS
+plot_meg_2x3_grid(
+    X_channels_last_raw_selected,
+    X_channels_last_selected,
+    time_last,
+    time_windows_last,
+    channel_labels_filtered,
+    channel_labels_filtered,
+    time_labels,
+    colors_selected,
+    colors_selected,
+    "Raw (rec11)", "Filtered (rec11)",
+    "Raw vs Filtered (rec11) - Selected Channels"
+)
+
+##########################################################
+##########################################################
+# ICA COMPONENT PLOTS:
+
+# Plot ICA components for rec1 (start)
+plot_ica_components(np.array(X_ica_start), time_start, 'X', rec1_label)
+plot_ica_components(np.array(Y_ica_start), time_start, 'Y', rec1_label)
+plot_ica_components(np.array(Z_ica_start), time_start, 'Z', rec1_label)
 
 # Plot for X
 plot_ica_components(np.array(X_ica_last), time_last, 'X', rec11_label)
@@ -442,6 +552,9 @@ Y_channels_last_clean = ica_Y.inverse_transform(Y_ica_last_clean.T).T
 Z_channels_last_clean = ica_Z.inverse_transform(Z_ica_last_clean.T).T
 print('ICA components cleaned')
 
+##########################################################
+##########################################################
+print("\n=== Plotting Power Spectra before and after ICA method MEG Channels ===")
 
 # Plot comparison: Filtered vs ICA-cleaned (rec7/last)
 # Compute vector norm for each channel after ICA cleaning
@@ -463,190 +576,3 @@ plot_all_channel_power_spectra(
     f'Vector Norm - {rec11_label} (Filtered + ICA Cleaned)'
 )
 plt.show()
-exit()
-##########################################################
-
-print("\n=== Filtering ===")
-print("\n=== Plotting FILTERED MEG and Normalized Data ===")
-
-
-
-# Create list of channel numbers (excluding 5 and 13)
-channel_numbers = [i+1 for i in range(20) if i not in channels_to_exclude]
-
-# Create colormap for MEG channels
-n_channels = len(X_channels_names)
-colors = plt.cm.rainbow(np.linspace(0, 1, 3))  # 3 channels
-
-# FILTERED rec1
-fig_filt, axes_filt = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-for i, channel in enumerate(X_channels_start_selected):
-    axes_filt[0].plot(time_start, channel, color=colors[i], linewidth=0.6, label=channel_labels_filtered[i])
-axes_filt[0].set_title(f'MEG X Component - {rec1_label} - Filtered (Selected)')
-axes_filt[0].set_ylabel('Amplitude (pT)')
-axes_filt[0].grid(True, alpha=0.3)
-axes_filt[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-norms_start_selected = [
-    np.sqrt(
-        X_channels_start_selected[i]**2 +
-        Y_channels_start[selected_indices_filtered[i]]**2 +
-        Z_channels_start[selected_indices_filtered[i]]**2
-    )
-    for i in range(3)
-]
-for i, norm in enumerate(norms_start_selected):
-    axes_filt[1].plot(time_start, norm, color=colors[i], linewidth=0.6, label=channel_labels_filtered[i])
-axes_filt[1].set_title(f'MEG Vector Norm - {rec1_label} - Filtered (Selected)')
-axes_filt[1].set_ylabel('Magnitude')
-axes_filt[1].grid(True, alpha=0.3)
-axes_filt[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-plt.tight_layout()
-plt.subplots_adjust(top=0.95)
-
-# FILTERED rec11
-fig_filt, axes_filt = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-for i, channel in enumerate(X_channels_last_selected):
-    axes_filt[0].plot(time_last, channel, color=colors[i], linewidth=0.6, label=channel_labels_filtered[i])
-axes_filt[0].set_title(f'MEG X Component - {rec11_label} - Filtered (Selected)')
-axes_filt[0].set_ylabel('Amplitude (pT)')
-axes_filt[0].grid(True, alpha=0.3)
-axes_filt[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-norms_last_selected = [
-    np.sqrt(
-        X_channels_last_selected[i]**2 +
-        Y_channels_last[selected_indices_filtered[i]]**2 +
-        Z_channels_last[selected_indices_filtered[i]]**2
-    )
-    for i in range(3)
-]
-for i, norm in enumerate(norms_last_selected):
-    axes_filt[1].plot(time_last, norm, color=colors[i], linewidth=0.6, label=channel_labels_filtered[i])
-axes_filt[1].set_title(f'MEG Vector Norm - {rec11_label} - Filtered (Selected)')
-axes_filt[1].set_ylabel('Magnitude')
-axes_filt[1].grid(True, alpha=0.3)
-axes_filt[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-plt.tight_layout()
-plt.subplots_adjust(top=0.95)
-plt.show()
-
-##########################################################
-##########################################################
-
-print("\n=== Plotting Power Spectra for Normalized MEG Channels ===")
-
-# Plot power spectra for first recording (Vector Norm)
-plot_all_channel_power_spectra(
-    norms_start, 
-    channel_numbers, 
-    f'Vector Norm - {rec1_label}'
-)
-plt.show()
-# Plot power spectra for second recording (Vector Norm)
-plot_all_channel_power_spectra(
-    norms_last, 
-    channel_numbers, 
-    f'Vector Norm - {rec11_label}'
-)
-plt.show()
-
-##########################################################
-
-
-# --- Define time frames as boolean masks ---
-# For rec1 (start)
-t_1_start = (time_start >= 5) & (time_start < 10)
-t_2_start = (time_start >= 105) & (time_start < 110)
-t_3_start = (time_start >= 285) & (time_start < 290)
-time_windows_start = [t_1_start, t_2_start, t_3_start]
-
-# For rec11 (last)
-t_1_last = (time_last >= 0) & (time_last < 10)
-t_2_last = (time_last >= 100) & (time_last < 110)
-t_3_last = (time_last >= 280) & (time_last < 290)
-time_windows_last = [t_1_last, t_2_last, t_3_last]
-time_labels = ["0-10 s", "100-110 s", "280-290 s"]
-
-# Use the same colormap as before
-# For rec1 raw
-plot_meg_3x3_grid(
-    X_channels_start_raw_selected,
-    np.array(time_start),
-    time_windows_start,
-    channel_labels_raw,
-    time_labels,
-    colors,
-    f"Raw MEG X Channels - {rec1_label} - Selected Channels and Time Windows"
-)
-
-# For rec1 filtered
-plot_meg_3x3_grid(
-    X_channels_start_selected,
-    np.array(time_start),
-    time_windows_start,
-    channel_labels_filtered,
-    time_labels,
-    colors,
-    f"Filtered MEG X Channels - {rec1_label} - Selected Channels and Time Windows"
-)
-
-# For rec11 raw
-plot_meg_3x3_grid(
-    X_channels_last_raw_selected,
-    np.array(time_last),
-    time_windows_last,
-    channel_labels_raw,
-    time_labels,
-    colors,
-    f"Raw MEG X Channels - {rec11_label} - Selected Channels and Time Windows"
-)
-
-# For rec11 filtered
-plot_meg_3x3_grid(
-    X_channels_last_selected,
-    np.array(time_last),
-    time_windows_last,
-    channel_labels_filtered,
-    time_labels,
-    colors,
-    f"Filtered MEG X Channels - {rec11_label} - Selected Channels and Time Windows"
-)
-
-# For normalized vector norm (example for rec1)
-# Compute vector norm for each selected filtered channel
-norms_start_selected = [
-    np.sqrt(
-        X_channels_start_selected[i]**2 +
-        Y_channels_start[selected_indices_filtered[i]]**2 +
-        Z_channels_start[selected_indices_filtered[i]]**2
-    )
-    for i in range(3)
-]
-plot_meg_3x3_grid(
-    norms_start_selected,
-    np.array(time_start),
-    time_windows_start,
-    channel_labels_filtered,
-    time_labels,
-    colors,
-    f" MEG Vector Norm - {rec1_label} - Selected Channels and Time Windows"
-)
-
-# Compute vector norm for each selected filtered channel for rec11
-norms_last_selected = [
-    np.sqrt(
-        X_channels_last_selected[i]**2 +
-        Y_channels_last[selected_indices_filtered[i]]**2 +
-        Z_channels_last[selected_indices_filtered[i]]**2
-    )
-    for i in range(3)
-]
-
-plot_meg_3x3_grid(
-    norms_last_selected,
-    np.array(time_last),
-    time_windows_last,
-    channel_labels_filtered,
-    time_labels,
-    colors,
-    f"MEG Vector Norm - {rec11_label} - Selected Channels and Time Windows"
-)
