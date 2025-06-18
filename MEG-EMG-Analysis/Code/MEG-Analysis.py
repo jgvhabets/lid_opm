@@ -14,7 +14,8 @@ from source.plot_functions import (
     calculate_individual_power_spectra,
     plot_all_channel_power_spectra,
     plot_meg_2x3_grid,
-    plot_channels_comparison
+    plot_channels_comparison,
+    plot_ica_max_amplitudes
 )
 
 #######################################################
@@ -162,7 +163,7 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # Go up one directory and then into Data
 data_dir = os.path.join(base_dir, '..', 'Data')
 
-file_path_1 = os.path.join(data_dir, "plfp65_rec11_13.11.2024_14-18-30_array1.lvm")
+file_path_1 = os.path.join(data_dir, "plfp65_rec1_13.11.2024_12-51-13_array1.lvm")
 file_path_11 = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
 ssp_baseline_file = os.path.join(data_dir, "adxl_mov_sensor__12.12.2024_12-07-05_array1.lvm")
 
@@ -498,8 +499,8 @@ plot_meg_2x3_grid(
     time_labels,
     colors_selected,
     colors_selected,
-    "Raw (rec1)", "Filtered (rec1)",
-    "Raw vs Filtered (rec1) - Selected Channels"
+    f'Raw {rec1_label}', f'Filtered {rec1_label}',
+    f'Raw vs Filtered {rec1_label} - All Channels'
 )
 
 # For rec11 (last) - SELECTED CHANNELS
@@ -513,8 +514,8 @@ plot_meg_2x3_grid(
     time_labels,
     colors_selected,
     colors_selected,
-    "Raw (rec11)", "Filtered (rec11)",
-    "Raw vs Filtered (rec11) - Selected Channels"
+    f'Raw {rec11_label}', f'Filtered {rec11_label}',
+    f'Raw vs Filtered {rec11_label} - All Channels'
 )
 
 ##########################################################
@@ -533,6 +534,31 @@ plot_ica_components(np.array(Y_ica_last), time_last, 'Y', rec11_label)
 # Plot for Z
 plot_ica_components(np.array(Z_ica_last), time_last, 'Z', rec11_label)
 
+##########################################################
+#let's analyze the ICA components to identify artifacts
+# Analyze ICA max amplitude to check if there are any random values or artifacts
+
+# For the first recording (rec1)
+max_X_ica_start = np.max(np.abs(X_ica_start), axis=1)
+max_Y_ica_start = np.max(np.abs(Y_ica_start), axis=1)
+max_Z_ica_start = np.max(np.abs(Z_ica_start), axis=1)
+
+# Bar plots for rec1 (start):
+plot_ica_max_amplitudes(X_ica_start, title=f'Max Amplitude of ICA Components - {rec1_label} (X)')
+plot_ica_max_amplitudes(Y_ica_start, title=f'Max Amplitude of ICA Components - {rec1_label} (Y)')
+plot_ica_max_amplitudes(Z_ica_start, title=f'Max Amplitude of ICA Components - {rec1_label} (Z)')
+
+# For the last recording (rec11)
+max_X_ica_last = np.max(np.abs(X_ica_last), axis=1)
+max_Y_ica_last = np.max(np.abs(Y_ica_last), axis=1)
+max_Z_ica_last = np.max(np.abs(Z_ica_last), axis=1)
+
+# Bar plots for rec1 (start):
+plot_ica_max_amplitudes(X_ica_last, title=f'Max Amplitude of ICA Components - {rec11_label} (X)')
+plot_ica_max_amplitudes(Y_ica_last, title=f'Max Amplitude of ICA Components - {rec11_label} (Y)')
+plot_ica_max_amplitudes(Z_ica_last, title=f'Max Amplitude of ICA Components - {rec11_label} (Z)')
+
+##########################################################
 print('Analyzing ICA components...')
 print('These are the components that we will consider as artifacts:')
 print('X: C12, Y: C3, Z: C6')
