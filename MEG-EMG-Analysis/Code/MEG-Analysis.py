@@ -15,7 +15,9 @@ from source.plot_functions import (
     plot_all_channel_power_spectra,
     plot_meg_2x3_grid,
     plot_channels_comparison,
-    plot_ica_max_amplitudes
+    plot_ica_max_amplitudes,
+    plot_single_ica_power_spectrum,
+    plot_ica_power_spectra_grid
 )
 
 #######################################################
@@ -163,8 +165,8 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # Go up one directory and then into Data
 data_dir = os.path.join(base_dir, '..', 'Data')
 
-file_path_1 = os.path.join(data_dir, "plfp65_rec1_13.11.2024_12-51-13_array1.lvm")
-file_path_11 = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
+file_path_1 = os.path.join(data_dir, "plfp65_rec5_13.11.2024_13-24-55_array1.lvm")
+file_path_11 = os.path.join(data_dir, "plfp65_rec9_13.11.2024_13-58-54_array1.lvm")
 ssp_baseline_file = os.path.join(data_dir, "adxl_mov_sensor__12.12.2024_12-07-05_array1.lvm")
 
 
@@ -580,6 +582,55 @@ print('ICA components cleaned')
 
 ##########################################################
 ##########################################################
+# ICA compare using power spectra:
+
+# PS of the first recording (rec1)
+component_names = [f"C{i+1}" for i in range(X_ica_start.shape[0])]
+
+plot_ica_power_spectra_grid(
+    X_ica_start,
+    plot_single_ica_power_spectrum,
+    component_names=component_names,
+    title=f"X Components Power Spectra - {rec1_label}"
+)
+plot_ica_power_spectra_grid(
+    Y_ica_start,
+    plot_single_ica_power_spectrum,
+    component_names=component_names,
+    title=f"Y Components Power Spectra - {rec1_label}"
+)
+plot_ica_power_spectra_grid(
+    Z_ica_start,
+    plot_single_ica_power_spectrum,
+    component_names=component_names,
+    title=f"Z Components Power Spectra - {rec1_label}"
+)
+
+# PS of the last recording (rec11)
+component_names = [f"C{i+1}" for i in range(X_ica_last.shape[0])]
+
+plot_ica_power_spectra_grid(
+    X_ica_last,
+    plot_single_ica_power_spectrum,
+    component_names=component_names,
+    title=f"X Components Power Spectra - {rec11_label}"
+)
+plot_ica_power_spectra_grid(
+    Y_ica_last,
+    plot_single_ica_power_spectrum,
+    component_names=component_names,
+    title=f"Y Components Power Spectra - {rec11_label}"
+)
+plot_ica_power_spectra_grid(
+    Z_ica_last,
+    plot_single_ica_power_spectrum,
+    component_names=component_names,
+    title=f"Z Components Power Spectra - {rec11_label}"
+)
+
+'''
+##########################################################
+##########################################################
 print("\n=== Plotting Power Spectra before and after ICA method MEG Channels ===")
 
 # Plot comparison: Filtered vs ICA-cleaned (rec7/last)
@@ -602,3 +653,4 @@ plot_all_channel_power_spectra(
     f'Vector Norm - {rec11_label} (Filtered + ICA Cleaned)'
 )
 plt.show()
+'''
