@@ -144,7 +144,7 @@ def plot_ica_components(ica_signals, time, axis_label, rec_label):
     for i in range(n_components):
         axes[i].plot(time, ica_signals[i])
         axes[i].set_ylabel(f'C{i+1}')
-    fig.suptitle(f'ICA Components ({axis_label} axis) - {rec_label}', fontsize=16)
+    fig.suptitle(f'ICA Components ({axis_label} axis) - {rec_label}', fontsize=10)
     plt.xlabel('Time (s)')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
@@ -165,8 +165,8 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # Go up one directory and then into Data
 data_dir = os.path.join(base_dir, '..', 'Data')
 
-file_path_1 = os.path.join(data_dir, "plfp65_rec5_13.11.2024_13-24-55_array1.lvm")
-file_path_11 = os.path.join(data_dir, "plfp65_rec9_13.11.2024_13-58-54_array1.lvm")
+file_path_1 = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
+file_path_11 = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
 ssp_baseline_file = os.path.join(data_dir, "adxl_mov_sensor__12.12.2024_12-07-05_array1.lvm")
 
 
@@ -238,9 +238,9 @@ Z_channels_names_raw = Z_channels_names[:20]
 ######################################################
 ######################################################
 
-# Exclude channels 5, 6, 13, and 20 from all components
-channels_to_exclude = [4, 5, 12, 19]
-print("\nExcluding channels 5, 6, 13, and 20 from all components...")
+# Exclude channels 5, 6, 13, 17 and 20 from all components
+channels_to_exclude = [4, 5, 12, 16, 19]
+print("\nExcluding channels 5, 6, 13, 17 and 20 from all components...")
 
 def remove_channels(channel_list, indices):
     return [channel for i, channel in enumerate(channel_list) if i not in indices] 
@@ -628,12 +628,12 @@ plot_ica_power_spectra_grid(
     title=f"Z Components Power Spectra - {rec11_label}"
 )
 
-'''
+
 ##########################################################
 ##########################################################
 print("\n=== Plotting Power Spectra before and after ICA method MEG Channels ===")
 
-# Plot comparison: Filtered vs ICA-cleaned (rec7/last)
+# Plot comparison: Filtered vs ICA-cleaned (last)
 # Compute vector norm for each channel after ICA cleaning
 norms_last_clean = calculate_channel_norms(
     X_channels_last_clean, Y_channels_last_clean, Z_channels_last_clean
@@ -653,4 +653,3 @@ plot_all_channel_power_spectra(
     f'Vector Norm - {rec11_label} (Filtered + ICA Cleaned)'
 )
 plt.show()
-'''
