@@ -1,3 +1,5 @@
+from os import remove
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -95,16 +97,93 @@ def extract_con_data(file):
 
         acc_data[axis] = apply_filter(data, raw.info['sfreq'], 2, 48)
 
-    for location in emg_data:
-        emg_data[location] *= 1e6
+    #for location in emg_data:
+    #    emg_data[location] *= 1e6
 
     # Get filtered EEG
     eeg_data = raw_filtered.get_data(picks=eeg_picks)
 
     return emg_data, acc_data, eeg_data
 
-for filepath in filepaths:
-    extract_con_data(filepath)
+#for filepath in filepaths:
+#    extract_con_data(filepath)
+
+def rest_recordings_df(location):
+    absolutes = []
+    recs = ["rest_rec01", "rest_rec03", "rest_rec05", "rest_rec07", "rest_rec09", "rest_rec11"]
+    for i, filepath in enumerate(filepaths):
+        emg_data, _, _  = extract_con_data(filepath)
+        absolute = np.abs(emg_data[location])
+        df= pd.DataFrame({
+            "emg_value": absolute,
+            "recording": recs[i],
+            "location": location
+        })
+        absolutes.append(df)
+    return pd.concat(absolutes)
+
+rest_recs_left_arm = rest_recordings_df("left_arm")
+rest_recs_left_leg = rest_recordings_df("left_leg")
+rest_recs_right_arm = rest_recordings_df("right_arm")
+rest_recs_right_leg = rest_recordings_df("right_leg")
+
+all_locs = pd.concat([rest_recs_left_arm, rest_recs_left_leg, rest_recs_right_arm, rest_recs_right_leg])
+
+#def plot_histograms(data, remove_outliers=False, use_log_y=False, y_max=None):
+#    # Filter nach Körperstelle
+#    #data = all_locs[all_locs["location"] == location].copy()
+#
+#    # Optional: Outlier entfernen (z.B. 1. und 99. Perzentil)
+#    if remove_outliers:
+#        lower = data["emg_value"].quantile(0.01)
+#        upper = data["emg_value"].quantile(0.99)
+#        data = data[(data["emg_value"] >= lower) & (data["emg_value"] <= upper)]
+#
+#    # Plot
+#    plt.figure(figsize=(10, 5))
+#    sns.histplot(data["emg_value"], bins=100, kde=True, hue="location")
+#    plt.title(f"Histogramm der EMG-Werte) {'(ohne Ausreißer)' if remove_outliers else ''}")
+#    plt.xlabel("Absolute EMG-Werte (µV)")
+#    plt.ylabel("Häufigkeit")
+#
+#    if use_log_y:
+#        plt.yscale("log")
+#    if y_max:
+#        plt.ylim(top=y_max)
+#
+#    plt.tight_layout()
+#    plt.show()
+
+
+def plot_recording_histograms(data, recordings=("rest_rec01", "rest_rec07")):
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+
+    for i, rec in enumerate(recordings):
+        subset = data[data["recording"] == rec].copy()
+
+        lower = subset["emg_value"].quantile(0.01)
+        upper = subset["emg_value"].quantile(0.99)
+        subset = subset[(subset["emg_value"] >= lower) & (subset["emg_value"] <= upper)]
+
+        sns.histplot(
+            data=subset,
+            x="emg_value",
+            hue="location",
+            bins=150,
+            kde=True,
+            ax=axes[i],
+            element="step"
+        )
+
+        axes[i].set_title(f"{rec}")
+        axes[i].set_xlabel("Absolute EMG-values (V) - probably off")
+        axes[i].set_ylabel("Frequency")
+
+    plt.tight_layout()
+    plt.show()
+
+plot_recording_histograms(all_locs, recordings=["rest_rec01", "rest_rec07"])
+#plot_histograms(all_locs_long, remove_outliers=True, use_log_y=False, y_max=None)
 
 
 def plot_errorbar(location):
@@ -117,7 +196,6 @@ def plot_errorbar(location):
     stds = [np.std(rec) for rec in absolutes]
 
     plt.figure()
-    plt.figure()
     plt.errorbar(x=range(len(means)), y=means, yerr=stds, fmt='o', label=location,
                markersize=8, capsize=5, capthick=2)
     plt.title("Errorbars of EMG values (left arm) of progressing (rest) recordings")
@@ -128,26 +206,6 @@ def plot_errorbar(location):
 
 plot_errorbar("left_arm")
 
-
-
-def rest_recordings_df(location):
-    absolutes = []
-    columns = ["rest_rec01", "rest_rec03", "rest_rec05", "rest_rec07", "rest_rec09", "rest_rec11"]
-    for i, filepath in enumerate(filepaths):
-        emg_data, _, _  = extract_con_data(filepath)
-        absolute = np.abs(emg_data[location])
-        df= pd.DataFrame({
-            "emg_value": absolute,
-            "recording": columns[i],
-            "location": location
-        })
-        absolutes.append(df)
-    return pd.concat(absolutes)
-
-rest_recs_left_arm = rest_recordings_df("left_arm")
-rest_recs_left_leg = rest_recordings_df("left_leg")
-
-all_locs = pd.concat([rest_recs_left_arm, rest_recs_left_leg])
 
 #x_labels = [f"Recording{i}" for i in [1, 3, 5, 7, 9, 11]]
 #x_pos = np.arange(len(absolutes))
@@ -162,14 +220,11 @@ all_locs = pd.concat([rest_recs_left_arm, rest_recs_left_leg])
 #lt.show()
 
 plt.figure(figsize=(12, 6))
-sns.violinplot(
+sns.histplot(
     data=all_locs,
     x='recording',
     y='emg_value',
-    hue='location',
-    split=True,
-    inner='quartile',
-    palette='pastel'
+    hue='location'
 )
 
 plt.title("EMG Signal Distribution by Recording and Location")
@@ -178,6 +233,5 @@ plt.ylabel("Absolute EMG Value (µV)")
 plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
-
 
 
