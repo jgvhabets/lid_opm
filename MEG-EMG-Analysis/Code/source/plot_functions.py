@@ -208,3 +208,72 @@ def plot_channels_comparison(
     plt.tight_layout()
     plt.subplots_adjust(top=0.95)
     plt.show()
+
+def plot_ica_max_amplitudes(ica_components, component_names=None, title="Max Amplitude of ICA Components"):
+    """
+    Plots a horizontal barplot of the max amplitude of each ICA component, with value annotations.
+
+    Parameters:
+        ica_components (np.ndarray): Array of shape (n_components, n_samples)
+        component_names (list or None): List of component names (length n_components)
+        title (str): Title for the plot
+    """
+    max_amplitudes = np.max(np.abs(ica_components), axis=1)
+    n_components = ica_components.shape[0]
+    if component_names is None:
+        component_names = [f"ICA {i+1}" for i in range(n_components)]
+    plt.figure(figsize=(10, 0.5 * n_components + 2))
+    bars = plt.barh(component_names, max_amplitudes)
+    plt.xlabel("Max Amplitude")
+    plt.ylabel("ICA Component")
+    plt.title(title)
+    # Annotate each bar with its value
+    for bar, value in zip(bars, max_amplitudes):
+        plt.text(value, bar.get_y() + bar.get_height()/2, f"{value:.2e}", va='center', ha='left')
+    plt.tight_layout()
+    plt.show()
+
+import matplotlib.pyplot as plt
+
+def plot_single_ica_power_spectrum(component, ax, sfreq=375, window_length=1.0, overlap=0.5, freq_range=(1, 100)):
+    """
+    Plot the power spectrum of a single ICA component on the given axis.
+    """
+    freqs, all_psds, _ = calculate_individual_power_spectra(
+        component, sfreq, window_length, overlap
+    )
+    psd_array = np.array(all_psds)
+    avg_psd = np.mean(psd_array, axis=0)
+    freq_mask = (freqs >= freq_range[0]) & (freqs <= freq_range[1])
+    plot_freqs = freqs[freq_mask]
+    plot_psd = avg_psd[freq_mask]
+    ax.semilogy(plot_freqs, plot_psd, color='b', linewidth=1.5, alpha=0.8)
+    ax.set_xlabel('Frequency (Hz)')
+    ax.set_ylabel('Power (pT²/Hz)')
+    ax.grid(True, alpha=0.3)
+
+def plot_ica_power_spectra_grid(ica_components, plot_power_spectrum_func, component_names=None, title="ICA Power Spectra (4x4)"):
+    """
+    Plots a 4x4 grid of power spectra for the first 16 ICA components.
+
+    Parameters:
+        ica_components (np.ndarray): Array of shape (n_components, n_samples)
+        plot_power_spectrum_func (callable): Function to plot power spectrum, signature (component, ax)
+        component_names (list or None): List of component names (length n_components)
+        title (str): Title for the figure
+    """
+    n_components = min(16, ica_components.shape[0])
+    if component_names is None:
+        component_names = [f"ICA {i+1}" for i in range(ica_components.shape[0])]
+    fig, axes = plt.subplots(4, 4, figsize=(16, 12))
+    fig.suptitle(title)
+    axes = axes.flatten()
+    for i in range(16):
+        ax = axes[i]
+        if i < n_components:
+            plot_power_spectrum_func(ica_components[i], ax)
+            ax.set_title(component_names[i])
+        else:
+            ax.axis('off')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show()

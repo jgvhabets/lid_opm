@@ -210,8 +210,8 @@ def synchronize_data(meg_data, emg_data, acc_data, eeg_data, time, time_con, Tze
 
 # File paths
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-lvm_path = "../Data/plfp65_rec4_13.11.2024_13-17-33_array1.lvm"
-con_path = "../Data/plfp65_rec4.con"
+lvm_path = "../Data/plfp65_rec7_13.11.2024_13-42-47_array1.lvm"
+con_path = "../Data/plfp65_rec7.con"
 
 print("=== Extracting Data from Files ===")
 
