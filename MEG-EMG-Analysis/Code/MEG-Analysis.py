@@ -17,7 +17,8 @@ from source.plot_functions import (
     plot_channels_comparison,
     plot_ica_max_amplitudes,
     plot_single_ica_power_spectrum,
-    plot_ica_power_spectra_grid
+    plot_ica_power_spectra_grid,
+    plot_ica_components
 )
 
 #######################################################
@@ -70,7 +71,7 @@ def calculate_power_spectrum(signal):
 
 # Function for applying the filters to the data:
 
-def apply_meg_filters(data, sfreq=375):
+def apply_meg_filters(data, sfreq=375, l_freq: int = 1, h_freq: int = 100):
     """
     Apply bandpass and notch filters to MEG data using MNE.
     
@@ -81,7 +82,7 @@ def apply_meg_filters(data, sfreq=375):
         filtered_data: Filtered MEG signal
     """
     # Bandpass filter (1-100 Hz)
-    data_bandpass = filter_data(data, sfreq=sfreq, l_freq=1, h_freq=100, 
+    data_bandpass = filter_data(data, sfreq=sfreq, l_freq=l_freq, h_freq=h_freq, 
                               method='fir', verbose=False)
         
     # Apply notch filters (50 Hz and harmonics)
@@ -134,20 +135,6 @@ def apply_fastica_to_channels(channels, n_components=None, random_state=0, max_i
     ica_signals = ica.fit_transform(data.T).T  # Transpose to (n_times, n_channels), then back
     return ica_signals, ica
 
-def plot_ica_components(ica_signals, time, axis_label, rec_label):
-    n_components = ica_signals.shape[0]
-    n_cols = 1
-    n_rows = n_components
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 2.2 * n_rows), sharex=True)
-    if n_components == 1:
-        axes = [axes]
-    for i in range(n_components):
-        axes[i].plot(time, ica_signals[i])
-        axes[i].set_ylabel(f'C{i+1}')
-    fig.suptitle(f'ICA Components ({axis_label} axis) - {rec_label}', fontsize=10)
-    plt.xlabel('Time (s)')
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.show()
 
 #################
 ### MAIN CODE ###
@@ -169,15 +156,18 @@ file_path_1 = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm
 file_path_11 = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
 ssp_baseline_file = os.path.join(data_dir, "adxl_mov_sensor__12.12.2024_12-07-05_array1.lvm")
 
+# extract sampling frequency from data file
+SFREQ = 375  # Hz, as per the data files
+
 
 df_start = pd.read_csv(file_path_1, header= 22, sep='\t')
 df_last = pd.read_csv(file_path_11, header=22, sep='\t')
 df_baseline = pd.read_csv(ssp_baseline_file, header=22, sep=',')
 
 # Extract recording names from file paths
-rec1_name = file_path_1.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec3']
+rec1_name = file_path_1.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec1']
 rec11_name = file_path_11.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec11']
-rec1_label = '_'.join(rec1_name)  # 'plfp65_rec3'
+rec1_label = '(+50min-Rest-Dyskinesia)'
 rec11_label = '_'.join(rec11_name) 
 
 # It seems that the column "Comment" is composed by Nan values, so I decide to remove it from the frame
@@ -191,7 +181,6 @@ Z_channels_names = [col for col in df_start.columns if "Z" in col]
 
 X_extras = ['X_Value', 'MUX_Counter1', 'MUX_Counter2']
 X_channels_names = [col for col in X_channels_names if col not in X_extras]
-
 
 
 # Extracting the channels from start and last files:
@@ -287,14 +276,14 @@ print("\nApply notch filters (50 Hz and harmonics)")
 
 
 # Filter start recording channels
-X_channels_start = [apply_meg_filters(channel) for channel in X_channels_start]
-Y_channels_start = [apply_meg_filters(channel) for channel in Y_channels_start]
-Z_channels_start = [apply_meg_filters(channel) for channel in Z_channels_start]
+X_channels_start = [apply_meg_filters(channel, sfreq=SFREQ,) for channel in X_channels_start]
+Y_channels_start = [apply_meg_filters(channel, sfreq=SFREQ,) for channel in Y_channels_start]
+Z_channels_start = [apply_meg_filters(channel, sfreq=SFREQ,) for channel in Z_channels_start]
 
 # Filter last recording channels
-X_channels_last = [apply_meg_filters(channel) for channel in X_channels_last]
-Y_channels_last = [apply_meg_filters(channel) for channel in Y_channels_last]
-Z_channels_last = [apply_meg_filters(channel) for channel in Z_channels_last]
+X_channels_last = [apply_meg_filters(channel, sfreq=SFREQ,) for channel in X_channels_last]
+Y_channels_last = [apply_meg_filters(channel, sfreq=SFREQ,) for channel in Y_channels_last]
+Z_channels_last = [apply_meg_filters(channel, sfreq=SFREQ,) for channel in Z_channels_last]
 
 # Normalize the filtered data:
 norms_start = calculate_channel_norms(X_channels_start, Y_channels_start, Z_channels_start)
@@ -388,6 +377,7 @@ plot_channels_comparison(
     y_label="Amplitude (pT)",
     axis_label="X"
 )
+
 # Plot all channels for rec11 (last)
 plot_channels_comparison(
     time_last,
@@ -425,7 +415,6 @@ plot_channels_comparison(
     y_label="Amplitude (pT)",
     axis_label="X"
 )
-
 ##########################################################
 ##########################################################
 
@@ -593,6 +582,7 @@ plot_ica_power_spectra_grid(
     component_names=component_names,
     title=f"X Components Power Spectra - {rec1_label}"
 )
+
 plot_ica_power_spectra_grid(
     Y_ica_start,
     plot_single_ica_power_spectrum,
@@ -643,13 +633,19 @@ norms_last_clean = calculate_channel_norms(
 plot_all_channel_power_spectra(
     norms_last, 
     channel_numbers, 
-    f'Vector Norm - {rec11_label} (Filtered, Before ICA)'
+    'Vector Norm - (+50min-Rest-Dyskinesia) - (Filtered, Before ICA)'
 )
+save_dir = os.path.abspath(os.path.join(base_dir, '../plot/presentation/november-dataset'))
+os.makedirs(save_dir, exist_ok=True)
+current_dir = os.getcwd()
+os.chdir(save_dir)
+plt.savefig("PS-before.png", dpi=300, bbox_inches='tight')
+os.chdir(current_dir)
 
 # Plot power spectra for ICA-cleaned data
 plot_all_channel_power_spectra(
     norms_last_clean, 
     channel_numbers, 
-    f'Vector Norm - {rec11_label} (Filtered + ICA Cleaned)'
+    'Vector Norm - (+50min-Rest-Dyskinesia) - (Filtered + ICA Cleaned)'
 )
 plt.show()

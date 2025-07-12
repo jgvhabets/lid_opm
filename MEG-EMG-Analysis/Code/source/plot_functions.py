@@ -277,3 +277,18 @@ def plot_ica_power_spectra_grid(ica_components, plot_power_spectrum_func, compon
             ax.axis('off')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
+
+def plot_ica_components(ica_signals, time, axis_label, rec_label):
+    n_components = ica_signals.shape[0]
+    n_cols = 1
+    n_rows = n_components
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 2.2 * n_rows), sharex=True)
+    if n_components == 1:
+        axes = [axes]
+    for i in range(n_components):
+        axes[i].plot(time, ica_signals[i])
+        axes[i].set_ylabel(f'C{i+1}')
+    fig.suptitle(f'ICA Components ({axis_label} axis) - {rec_label}', fontsize=10)
+    plt.xlabel('Time (s)')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show() 
