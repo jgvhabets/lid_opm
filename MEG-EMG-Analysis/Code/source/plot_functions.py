@@ -157,7 +157,7 @@ def plot_meg_2x3_grid(
                 label=label
             )
         axes[0, col].set_title(f"{time_label}")
-        axes[0, col].set_ylabel(suptitle_A)
+        axes[0, col].set_ylabel(suptitle_A, fontsize=12)
         axes[0, col].grid(True, alpha=0.3)
         if col == 0:
             axes[0, col].legend(fontsize=8, loc='upper right')
@@ -171,7 +171,7 @@ def plot_meg_2x3_grid(
                 alpha=0.7,
                 label=label
             )
-        axes[1, col].set_ylabel(suptitle_B)
+        axes[1, col].set_ylabel(suptitle_B, fontsize=12)
         axes[1, col].grid(True, alpha=0.3)
         if col == 0:
             axes[1, col].legend(fontsize=8, loc='upper right')
@@ -208,6 +208,7 @@ def plot_channels_comparison(
     plt.tight_layout()
     plt.subplots_adjust(top=0.95)
     plt.show()
+
 
 def plot_ica_max_amplitudes(ica_components, component_names=None, title="Max Amplitude of ICA Components"):
     """

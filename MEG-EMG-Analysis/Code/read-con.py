@@ -1,8 +1,21 @@
+############################################################################
+####### LIBRARIES ##########################################################
+############################################################################
+
 import mne
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
+from sklearn.decomposition import FastICA
+from source.plot_functions import (plot_channels_comparison,
+                                   plot_meg_2x3_grid,
+                                   plot_ica_components,
+                                   plot_ica_max_amplitudes,
+                                   plot_single_ica_power_spectrum,
+                                   plot_ica_power_spectra_grid,
+                                   plot_all_channel_power_spectra)
+
 
 ############################################################################
 ####### MAIN ##############################################################
@@ -10,7 +23,7 @@ from scipy.signal import find_peaks
 
 # Paths and filenames
 con_file_path = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/dyskensie_opm_data_230625/"
-con_file_name = 'pilot_dyst_230625_arm_move.con'
+con_file_name = 'pilot_dyst_230625_mock_dysk_no_task.con'
 processed_h5_path = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/dyskensie_opm_data_230625/EMG_ACC_data _cutted/opm_healthy_control_data_230625/"
 processed_h5_name = 'PTB-01_EmgAcc_setupA_move1_processed.h5'
 source_path = '/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/dyskensie_opm_data_230625/EMG_ACC_data'
@@ -95,6 +108,16 @@ print("Extracting filtered MEG data and converting to picoTesla (pT)...")
 meg_data = con_raw_filtered.get_data(picks=meg_channel_indices) * 1e12  # Convert to pT
 
 print("MEG filtering process completed.\n")
+
+###################################################################################
+# extract and keep RAW MEG data for further processing
+
+# Raw MEG data (convert to pT for fair comparison)
+meg_raw_data = con_raw.get_data(picks=meg_channel_indices) * 1e12  # shape: (7, n_times)
+meg_filtered_data = meg_data  # already in pT, shape: (7, n_times)
+meg_time = con_raw.times  # or use meg_time_trimmed if you want trimmed
+
+
 ###################################################################################
 ## SYNCHRONISING THE FILES (align MEG to first minimum of its trigger channel):
 ###################################################################################
@@ -137,14 +160,19 @@ emg_start_idx = np.searchsorted(processed_h5_times, t_zero)
 emg_end_idx = emg_start_idx + len(common_time)
 emg_time_trimmed = processed_h5_times[emg_start_idx:emg_end_idx]
 
-# 1. EMG right forearm (trim to match MEG start)
-emg_ch = emg_channels["right_forearm"]
-if emg_ch in processed_h5_channel_names:
-    emg_idx = processed_h5_channel_names.index(emg_ch)
-    emg_right_forearm = processed_h5_data[emg_idx]
-    emg_right_forearm_trimmed = emg_right_forearm[emg_start_idx:emg_end_idx]
-else:
-    raise ValueError(f"EMG channel {emg_ch} not found in processed_h5_channel_names.")
+# Multiply EMG channels by 1e6 (convert to µV) at extraction
+emg_trimmed_dict = {}
+for emg_label, emg_ch in emg_channels.items():
+    if emg_ch in processed_h5_channel_names:
+        emg_idx = processed_h5_channel_names.index(emg_ch)
+        emg_signal = processed_h5_data[emg_idx]
+        emg_trimmed_dict[emg_label] = emg_signal[emg_start_idx:emg_end_idx] * 1e6  # Convert to µV
+    else:
+        emg_trimmed_dict[emg_label] = np.zeros(len(common_time))  # Fallback if missing
+
+
+# 1. EMG right forearm (already trimmed and converted to µV)
+emg_right_forearm_trimmed = emg_trimmed_dict["right_forearm"]
 
 # 2. ACC right hand (all axes, trimmed)
 acc_axes = ["y", "z", "x"]
@@ -158,9 +186,23 @@ for axis in acc_axes:
     else:
         acc_signals_trimmed.append(np.zeros(len(common_time)))  # Fallback if missing
 
-################################################
+
+###################################################################################
+## ICA ANALYSIS ON MEG DATA:
+###################################################################################
+
+# Apply FastICA to the filtered MEG data (shape: 7, n_times)
+n_components = meg_filtered_data.shape[0]  # 7
+ica = FastICA(n_components=n_components, random_state=0, max_iter=1000)
+ica_signals = ica.fit_transform(meg_filtered_data.T).T  # shape: (7, n_times)
+
+###################################################################################
+###################################################################################
+## PLOT THE CHANNELS:
+###################################################################################
+###################################################################################
+
 # --- Plotting the EMG, ACC and MEG signals ---
-################################################
 # --- Zoom to t >= 110s for all signals ---
 t_min = 105  # seconds
 
@@ -174,125 +216,119 @@ fig, axs = plt.subplots(3, 1, figsize=(15, 10), sharex=True)
 # EMG right forearm
 axs[0].plot(emg_time_trimmed[emg_mask], emg_right_forearm_trimmed[emg_mask], color='tab:blue')
 axs[0].set_title("EMG: Right Forearm (BIP11)")
-axs[0].set_ylabel("Amplitude")
+axs[0].set_ylabel("Amplitude (µV)")
 axs[0].grid(True)
 
 # ACC right hand (all axes)
 for i, axis in enumerate(acc_axes):
     axs[1].plot(emg_time_trimmed[emg_mask], acc_signals_trimmed[i][emg_mask], label=axis)
 axs[1].set_title("ACC: Right Hand (axes y, z, x)")
-axs[1].set_ylabel("Amplitude")
+axs[1].set_ylabel("Acceleration (g)")
 axs[1].legend()
 axs[1].grid(True)
 
 # Trimmed MEG C3 channel (index 0)
 axs[2].plot(common_time[meg_mask], meg_data_trimmed[0][meg_mask], color='purple')
 axs[2].set_title("C3 - Left Motor Cortex")
-axs[2].set_xlabel("Time from t_zero (s)")
+axs[2].set_xlabel(f"Time from t = {t_min} s")
 axs[2].set_ylabel("Magnetiic Field (pT)")
 axs[2].grid(True)
 
 plt.tight_layout()
 plt.show()
-exit()
 
+##############################################################################
+# --- Plotting comparison of MEG raw vs filtered channels ---
 
-###################################################################################
-###################################################################################
-## PLOT THE CHANNELS:
-###################################################################################
-###################################################################################
+# Use the same channel names for both
+channel_labels = list(meg_channel_map.keys())
+colors = plt.cm.rainbow(np.linspace(0, 1, len(channel_labels)))
 
-# Plot the trigger channel to visualize events
-time = np.arange(len(trigger_channel)) / sfreq
-plt.figure(figsize=(12, 6))
-plt.plot(time, trigger_channel, label="Trigger Channel (157)", color="red")
-plt.xlabel("Time (s)")
-plt.ylabel("Amplitude")
-plt.title("Trigger Channel Data")
-plt.legend()
-plt.grid(True)
-plt.show()
+# Plot comparison
+plot_channels_comparison(
+    meg_time,
+    meg_raw_data,
+    meg_filtered_data,
+    channel_labels,
+    channel_labels,
+    colors,
+    rec_label="Raw vs Filtered MEG",
+    y_label="Amplitude (pT)",
+    axis_label="All"
+)
+###########################################################################
+# --- Plotting 2x3 GRID comparison of MEG raw vs filtered channels ---
 
-# Detect trigger events (assuming non-zero values indicate events)
-trigger_times = trigger_events / sfreq
-print(f"Detected trigger events at times (s): {trigger_times}")
+# Define time frames as boolean masks for the grid plot
+MEG_time_start = meg_time  # Use the full MEG time axis for raw/filtered comparison
 
-# Plot all channels of the h5 dataset to visually identify the trigger channel
-plt.figure(figsize=(15, 10))
-offset = 0
-for i, ch_name in enumerate(raw_h5_channel_names):
-    plt.plot(raw_h5_times, raw_h5_data[i] + offset, label=ch_name)
-    offset += np.ptp(raw_h5_data[i]) * 1.2  # Add vertical offset for visibility
+t_1_start = (MEG_time_start >= 85) & (MEG_time_start < 100)
+t_2_start = (MEG_time_start >= 225) & (MEG_time_start < 240)
+t_3_start = (MEG_time_start >= 325) & (MEG_time_start < 340)
+time_windows_start = [t_1_start, t_2_start, t_3_start]
+time_labels = ["85-100 s", "225-240 s", "325-340 s"]
 
-plt.xlabel("Time (s)")
-plt.ylabel("Amplitude + offset")
-plt.title("All channels in h5 file (offset for visibility)")
-plt.legend(loc='upper right', bbox_to_anchor=(1.15, 1.0), fontsize='small', ncol=2)
-plt.tight_layout()
-plt.show()
+plot_meg_2x3_grid(
+    meg_raw_data,
+    meg_filtered_data,
+    MEG_time_start,
+    time_windows_start,
+    channel_labels,
+    channel_labels,
+    time_labels,
+    colors,
+    colors,
+    "Raw MEG",
+    "Filtered MEG",
+    "Raw vs Filtered MEG - All Channels"
+)
+#plt.savefig("../plot/presentation/june-dataset/grid-MEG-raw-vs-filt.png", dpi=300, bbox_inches='tight')
 
+###########################################################################
+# --- Plotting ICA components ---
+
+# Plot ICA components (all 7)
+plot_ica_components(ica_signals, meg_time, 'All', 'Filtered MEG')
+
+# Plot max amplitude of ICA components
+plot_ica_max_amplitudes(ica_signals, title='Max Amplitude of ICA Components - Filtered MEG')
+
+component_names = [f"C{i+1}" for i in range(ica_signals.shape[0])]
+plot_ica_power_spectra_grid(
+    ica_signals,
+    plot_single_ica_power_spectrum,
+    component_names=component_names,
+    title="ICA Components Power Spectra - Filtered MEG"
+)
+
+#############################################################################
 '''
-1- SYNCHRONIZE THE DATAS
-2- EXTRACT THE MEG CHANNELS
-3- PLOT THE CHANNELS AND COMPARES
+ICA Artifact Removal:
+Based on the max amplitude analysis of the ICA components, we are excluding components C1 and C4 (indices 0 and 3).
+These components showed the highest amplitudes and are likely to represent artifacts.
+They are set to zero before reconstructing the cleaned MEG data.
 '''
 
-# After inspecting the output above, set the correct MEG channel names.
-meg_channel_indices = list(range(7))  # indices 0 to 6
-meg_channel_names = [con_raw.ch_names[i] for i in meg_channel_indices]
+# --- Remove ICA components C1 and C4 (indices 0 and 3) ---
+ica_signals_clean = ica_signals.copy()
+ica_signals_clean[0, :] = 0  # Remove C1
+ica_signals_clean[3, :] = 0  # Remove C4
 
-print("Selected MEG channel names:", meg_channel_names)
-print("Selected MEG channel indices:", meg_channel_indices)
-print('MEG mapped channels:')
-for meg, sensor in meg_channel_map.items():
-    print(meg, sensor)
+# --- Reconstruct cleaned MEG data ---
+meg_data_ica_cleaned = ica.inverse_transform(ica_signals_clean.T).T  # shape: (7, n_times)
 
-# Extract MEG data for these channels
-meg_selected_data = con_raw.get_data(picks=meg_channel_indices)
+# --- Plot power spectra for filtered (before ICA) ---
+channel_numbers = list(range(1, meg_filtered_data.shape[0] + 1))  # [1, 2, ..., 7]
+plot_all_channel_power_spectra(
+    meg_filtered_data,  # shape: (7, n_times)
+    channel_numbers,
+    'Vector Norm - Filtered MEG (Before ICA)'
+)
 
-# 1. Extract right_forearm EMG data
-emg_ch = emg_channels["right_forearm"]
-if emg_ch in raw_h5_channel_names:
-    emg_idx = raw_h5_channel_names.index(emg_ch)
-    emg_right_forearm = raw_h5_data[emg_idx]
-else:
-    raise ValueError(f"EMG channel {emg_ch} not found in raw_h5_channel_names.")
-
-# Prepare time axes
-emg_time = raw_h5_times
-acc_time = raw_h5_times
-meg_time = con_raw.times
-
-# Plot
-fig, axs = plt.subplots(3, 1, figsize=(15, 10), sharex=False)
-
-# 1. EMG right forearm
-axs[0].plot(emg_time, emg_right_forearm, color='tab:blue')
-axs[0].set_title("EMG: Right Forearm (BIP11)")
-axs[0].set_ylabel("Amplitude")
-axs[0].grid(True)
-
-# 2. ACC right_hand (plot all axes: y, z, x)
-acc_axes = ["y", "z", "x"]
-for i, axis in enumerate(acc_axes):
-    acc_ch = acc_channels["right_hand"][axis]
-    if acc_ch in raw_h5_channel_names:
-        acc_idx = raw_h5_channel_names.index(acc_ch)
-        acc_signal = raw_h5_data[acc_idx]
-        axs[1].plot(acc_time, acc_signal, label=axis)
-    else:
-        print(f"ACC channel {acc_ch} not found in raw_h5_channel_names.")
-axs[1].set_title("ACC: Right Hand (axes y, z, x)")
-axs[1].set_ylabel("Amplitude")
-axs[1].legend()
-axs[1].grid(True)
-
-# 3. MEG C4
-meg_c4 = meg_selected_data[1]  # C4 is the second channel
-axs[2].plot(meg_time, meg_c4, color='tab:orange')
-axs[2].set_title("MEG: C4 (MEG002)")
-axs[2].set_xlabel("Time (s)")
-axs[2].set_ylabel("Amplitude")
-
+# --- Plot power spectra for ICA-cleaned data ---
+plot_all_channel_power_spectra(
+    meg_data_ica_cleaned,  # shape: (7, n_times)
+    channel_numbers,
+    'Vector Norm - Filtered MEG (ICA Cleaned)'
+)
 plt.show()
