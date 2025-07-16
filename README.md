@@ -2,6 +2,9 @@
 Exploring cortical patterns of levodopa induced dyskinesia using OPM-MEG.
 
 
+- EMG ACC analysis
+This branch will have all of the code relating to the EMG-data collection, EMG-Analysis and also code for the Accelerometer. Excited to get started!
+
 # Dependencies
 `conda create -n lid_opm python numpy pandas scipy scikit-learn jupyter matplotlib`
 additional packages:
