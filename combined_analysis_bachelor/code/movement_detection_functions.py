@@ -11,10 +11,10 @@ import mne
 
 
 ## removing off and onsets that are too close together (splitting one arm raise)
-def take_out_short_off_onset(onsets, offsets, min_time_period, sampling_frequency):
+def take_out_short_off_onset(onsets, offsets, min_time_period, sampling_freq):
     onsets_clean = onsets.copy()
     offsets_clean = offsets.copy()
-    min_sample_period = min_time_period * sampling_frequency
+    min_sample_period = min_time_period * sampling_freq
 
     if hasattr(onsets, 'tolist'):
         onsets_clean = onsets.tolist()
