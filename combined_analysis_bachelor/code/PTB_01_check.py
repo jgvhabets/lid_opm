@@ -7,8 +7,8 @@ import scipy as sp
 from matplotlib.lines import lineStyles
 from scipy.signal import butter, sosfiltfilt
 from scipy.stats import zscore
-from EMG_analysis_bachelor.functions_for_pipeline import get_ch_indices, plot_channel_overview, normalize_emg, \
-    notched_and_filtered, create_df, envelope, rectify, tkeo, notched
+from combined_analysis_bachelor.code.functions_for_pipeline import get_ch_indices, plot_channel_overview, normalize_emg, \
+    notched_and_filtered, create_df, envelope, rectify, tkeo
 import matplotlib
 
 matplotlib.use('Qt5Agg')
@@ -31,7 +31,7 @@ locations = {"BIP7":"right M. tibialis anterior",
             "BIP12" : "left M. tibialis anterior"}
 sf = 1000
 
-directory = r"D:\PTB_01_data";
+directory = r"E:\PTB_01_data";
 
 for file in os.listdir(directory):
     if file.endswith(".cnt"):
@@ -70,10 +70,10 @@ A_rest_data[1] *= -1 # inverting y-Axis from left hand sensor
 A_rest_data[6] *= -1 # invert x-Axis from right hand sensor
 
 # check where to trim
-plt.figure()
-plt.plot(A_rest_times, A_rest_data[6])
-plt.axvline(x=onsets, color="black")
-plt.show()
+#plt.figure()
+#plt.plot(A_rest_times, A_rest_data[6])
+#plt.axvline(x=onsets, color="black")
+#plt.show()
 
 # trimming #
 A_rest_start = int(onsets[0] + 10 * sf) # = 10 secs after Trigger Signal (=5 secs after Tap) (10 * 1000Hz)
@@ -127,11 +127,18 @@ A_move_1_times_trimmed = A_move_1_times[A_move_1_start:A_move_1_end]
 # ============== Recording 3: Setup A & Rest - mock dysk.  ====================== #
 A_rest_mock = mne.io.read_raw_ant(filedirs[2], preload=True)
 A_rest_mock_data, A_rest_mock_times = A_rest_mock[channel_custom_order, :]
-onsets = A_rest_mock.annotations.onset
-onsets = onsets * sf
+onsets_time = A_rest_mock.annotations.onset
+onsets = onsets_time * sf
 sync_trig = onsets[2] / sf # i think there were two trigger sig. in my software for rec. 3 thats why nr. 3 of signals represents first rest period start
 A_rest_mock_data[1] *= -1
 A_rest_mock_data[6] *= -1
+
+plt.figure()
+plt.plot(A_rest_mock_times, A_rest_mock_data[2], label="left arm")
+for onset in onsets_time:
+    plt.axvline(onset, color="black")
+plt.legend()
+plt.show()
 
 # trimming #
 A_rest_mock_start = int(onsets[3] - 60 * sf) # = 60 secs * 1000Hz sf (taking the first move trig and going 60 secs back
