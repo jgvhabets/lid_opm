@@ -51,4 +51,58 @@ plt.plot(lags, correlate(low_filtered[5], low_filtered[2], mode='full'), label='
 #plt.xlabel("lags")
 #plt.ylabel("correlate")
 #plt.legend()
-plt.savefig("Auto-Corr_Cross-corr.svg")
+#plt.savefig("Auto-Corr_Cross-corr.svg")
+plt.show()
+
+
+ncc = correlate(norm_charite, norm_ant, mode='same', method='fft') / (np.linalg.norm(norm_charite) * np.linalg.norm(norm_ant))
+lags = np.arange(-len(norm_charite)+1, len(norm_ant))
+
+plt.figure()
+plt.plot(lags, correlate(norm_ant, norm_ant, mode='full'), label='Auto-corr: ACC-Ant vs ACC-Ant')
+plt.plot(lags, correlate(norm_charite, norm_ant, mode='full'), label='Cross-corr: ACC-Ant vs ACC-Charite')
+# plt.axvline(x=0, color='k', linestyle='--')
+plt.title("Cross-correlate ≈ Auto-correlate")
+plt.xlabel("lags")
+plt.ylabel("correlate")
+plt.legend()
+#plt.savefig("Auto-Corr_Cross-corr.svg")
+plt.show() # auschecken!!!!!
+
+
+norm_charite = norm_charite / np.linalg.norm(norm_charite)
+norm_ant = norm_ant / np.linalg.norm(norm_ant)
+
+
+def normalized_cross_correlation(x, y, mode='full'):
+    """
+    Berechnet normalisierte Cross-Korrelation: Werte liegen zwischen -1 und +1.
+    """
+    corr = correlate(x, y, mode=mode)
+
+    auto_x = correlate(x, x, mode=mode)
+    auto_y = correlate(y, y, mode=mode)
+
+    norm_factor = np.sqrt(auto_x * auto_y)
+    norm_factor[norm_factor == 0] = np.nan
+
+    return corr / norm_factor
+
+
+# Normierte Korrelationen
+auto_corr = normalized_cross_correlation(norm_ant, norm_ant)
+cross_corr = normalized_cross_correlation(norm_charite, norm_ant)
+
+lags = np.arange(-len(norm_ant) + 1, len(norm_ant))
+
+# --------------------------
+# plot
+plt.figure(figsize=(10, 5))
+plt.plot(lags, auto_corr, label='Auto-Corr: Ant vs Ant')
+plt.plot(lags, cross_corr, label='Cross-Corr: Charité vs Ant')
+plt.title('Normalisierte Auto- und Cross-Korrelation')
+plt.xlabel('lags')
+plt.ylabel('correlation coefficient')
+plt.legend()
+plt.grid()
+plt.show() ## iwas ist komisch hier
