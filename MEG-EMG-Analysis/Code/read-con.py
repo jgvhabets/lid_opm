@@ -23,7 +23,7 @@ from source.plot_functions import (plot_channels_comparison,
 
 # Paths and filenames
 con_file_path = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/dyskensie_opm_data_230625/"
-con_file_name = 'pilot_dyst_230625_mock_dysk_no_task.con'
+con_file_name = 'pilot_dyst_230625_art_blink_mouth.con'
 processed_h5_path = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/dyskensie_opm_data_230625/EMG_ACC_data _cutted/opm_healthy_control_data_230625/"
 processed_h5_name = 'PTB-01_EmgAcc_setupA_move1_processed.h5'
 source_path = '/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/dyskensie_opm_data_230625/EMG_ACC_data'
@@ -51,7 +51,7 @@ emg_channels = {
     "right_forearm": "BIP11",
     "right_delt": "BIP8",
     "left_forearm": "BIP9",
-    "left_delt": "BIP10",
+    "left_delt": "BIP10",   
     "right_tibialis_anterior": "BIP7",
     "left_tibialis_anterior": "BIP12",
     "reference": "Olecranon"
@@ -102,6 +102,9 @@ con_raw_filtered.filter(l_freq=Hpass, h_freq=lpass, picks=data_channels)
 
 print("Applying 50 Hz notch filter to remove line noise...")
 con_raw_filtered.notch_filter(freqs=50, picks=data_channels)
+
+print("Applying 100 Hz notch filter to remove line noise...")
+con_raw_filtered.notch_filter(freqs=100, picks=data_channels)
 
 # Convert to pT
 print("Extracting filtered MEG data and converting to picoTesla (pT)...")
@@ -236,7 +239,6 @@ axs[2].grid(True)
 
 plt.tight_layout()
 plt.show()
-
 ##############################################################################
 # --- Plotting comparison of MEG raw vs filtered channels ---
 
@@ -282,7 +284,6 @@ plot_meg_2x3_grid(
     "Filtered MEG",
     "Raw vs Filtered MEG - All Channels"
 )
-#plt.savefig("../plot/presentation/june-dataset/grid-MEG-raw-vs-filt.png", dpi=300, bbox_inches='tight')
 
 ###########################################################################
 # --- Plotting ICA components ---
@@ -322,13 +323,14 @@ channel_numbers = list(range(1, meg_filtered_data.shape[0] + 1))  # [1, 2, ..., 
 plot_all_channel_power_spectra(
     meg_filtered_data,  # shape: (7, n_times)
     channel_numbers,
-    'Vector Norm - Filtered MEG (Before ICA)'
+    'Power Spectra - Filtered MEG (Before ICA)'
 )
+
 
 # --- Plot power spectra for ICA-cleaned data ---
 plot_all_channel_power_spectra(
     meg_data_ica_cleaned,  # shape: (7, n_times)
     channel_numbers,
-    'Vector Norm - Filtered MEG (ICA Cleaned)'
+    'Power Spectra - Filtered MEG (ICA Cleaned)'
 )
 plt.show()

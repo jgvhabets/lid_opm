@@ -6,10 +6,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import mne
-from mne.filter import filter_data
 from mne.time_frequency import Spectrum
 from sklearn.decomposition import FastICA
-from source.ssp_function import apply_ssp_from_baseline
 from source.plot_functions import (
     calculate_individual_power_spectra,
     plot_all_channel_power_spectra,
@@ -20,127 +18,18 @@ from source.plot_functions import (
     plot_ica_power_spectra_grid,
     plot_ica_components
 )
+from source.MEG_analysis_functions import (
+    calculate_channel_norms,
+    apply_fastica_to_channels,
+    apply_meg_filters
+)
 
 #######################################################
-#################
-### FUNCTIONS ###
-#################
-#######################################################
-
-# Function that calculates the norm of each channel;
-
-def calculate_channel_norms(X_channels, Y_channels, Z_channels):
-    """
-    Calculate the Euclidean norm for each sensor using its X, Y, Z components.
-    
-    Args:
-        X_channels: List of X component arrays for each sensor
-        Y_channels: List of Y component arrays for each sensor
-        Z_channels: List of Z component arrays for each sensor
-    
-    Returns:
-        List of norm arrays for each sensor
-    """
-    norms = []
-    n_channels = len(X_channels)
-    
-    for i in range(n_channels):
-        # Calculate norm for each time point: sqrt(x² + y² + z²)
-        norm = np.sqrt(
-            X_channels[i]**2 + 
-            Y_channels[i]**2 + 
-            Z_channels[i]**2
-        )
-        norms.append(norm)
-    
-    return norms
-
-# Function to calculate the power spectrum of a signal:
-
-def calculate_power_spectrum(signal):
-    """Calculate FFT and power spectrum of a signal"""
-    # Apply FFT
-    n = len(signal)
-    fft = np.fft.fft(signal) / n  #Normalization
-    freqs = np.fft.fftfreq(n, d=0.002667)  # 375 Hz sampling rate
-    power = np.abs(fft) ** 2  # Power calculation
-    
-    # Get positive frequencies only and double the values to compensate for removing negatives
-    pos_mask = freqs >= 0
-    return freqs[pos_mask], 2 * power[pos_mask]
-
-# Function for applying the filters to the data:
-
-def apply_meg_filters(data, sfreq=375, l_freq: int = 1, h_freq: int = 100):
-    """
-    Apply bandpass and notch filters to MEG data using MNE.
-    
-    Args:
-        data: Input MEG signal
-        sfreq: Sampling frequency (Hz)
-    Returns:
-        filtered_data: Filtered MEG signal
-    """
-    # Bandpass filter (1-100 Hz)
-    data_bandpass = filter_data(data, sfreq=sfreq, l_freq=l_freq, h_freq=h_freq, 
-                              method='fir', verbose=False)
-        
-    # Apply notch filters (50 Hz and harmonics)
-    filtered_data = data_bandpass
-    for freq in [50, 100, 150]:
-        filtered_data = mne.filter.notch_filter(
-            filtered_data, 
-            Fs=sfreq,  
-            freqs=freq,
-            verbose=False
-        )
-    
-
-    return filtered_data
-
-
-def create_meg_raw(channels, ch_names, sfreq=375):
-    """
-    Create an MNE RawArray from MEG channels.
-    channels: list of arrays (n_channels, n_times)
-    ch_names: list of channel names
-    sfreq: sampling frequency
-    Returns: MNE RawArray
-    """
-    n_channels = len(channels)
-    ch_types = ['mag'] * n_channels
-    info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
-    # Explicitly set the unit to Tesla for each channel
-    data = np.array(channels)
-    return mne.io.RawArray(data, info, verbose=False)
-
-def apply_fastica_to_channels(channels, n_components=None, random_state=0, max_iter=1000):
-    """
-    Apply FastICA to a list of MEG channel arrays (shape: n_channels x n_times).
-    
-    Args:
-        channels: list or np.ndarray, shape (n_channels, n_times)
-        n_components: int or None, number of ICA components (default: n_channels)
-        random_state: int, random seed
-        max_iter: int, max iterations for FastICA
-        
-    Returns:
-        ica_signals: np.ndarray, shape (n_channels, n_times), ICA components
-        ica_model: fitted FastICA object
-    """
-    data = np.array(channels)
-    if n_components is None:
-        n_components = data.shape[0]
-    ica = FastICA(n_components=n_components, random_state=random_state, max_iter=max_iter)
-    ica_signals = ica.fit_transform(data.T).T  # Transpose to (n_times, n_channels), then back
-    return ica_signals, ica
-
 
 #################
 ### MAIN CODE ###
 #################
 
-#######################################################
 #######################################################
 
 
@@ -154,7 +43,6 @@ data_dir = os.path.join(base_dir, '..', 'Data')
 
 file_path_1 = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
 file_path_11 = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
-ssp_baseline_file = os.path.join(data_dir, "adxl_mov_sensor__12.12.2024_12-07-05_array1.lvm")
 
 # extract sampling frequency from data file
 SFREQ = 375  # Hz, as per the data files
@@ -162,12 +50,11 @@ SFREQ = 375  # Hz, as per the data files
 
 df_start = pd.read_csv(file_path_1, header= 22, sep='\t')
 df_last = pd.read_csv(file_path_11, header=22, sep='\t')
-df_baseline = pd.read_csv(ssp_baseline_file, header=22, sep=',')
 
 # Extract recording names from file paths
 rec1_name = file_path_1.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec1']
 rec11_name = file_path_11.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec11']
-rec1_label = '(+50min-Rest-Dyskinesia)'
+rec1_label = '_'.join(rec1_name)
 rec11_label = '_'.join(rec11_name) 
 
 # It seems that the column "Comment" is composed by Nan values, so I decide to remove it from the frame

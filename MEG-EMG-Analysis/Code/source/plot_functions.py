@@ -186,8 +186,23 @@ def plot_channels_comparison(
     rec_label, y_label="Amplitude (pT)", axis_label="X"
 ):
     """
-    Plot selected raw and filtered MEG channels in two vertically stacked subplots.
+    Plot comparison between raw and filtered MEG channels in stacked subplots.
+    
+    Creates two vertically stacked subplots comparing raw and filtered versions
+    of the same channels with matching colors and labels.
+    
+    Args:
+        time: Time vector for x-axis
+        raw_channels: List of raw channel signals
+        filtered_channels: List of filtered channel signals
+        raw_labels: List of labels for raw channels
+        filtered_labels: List of labels for filtered channels
+        colors: List of colors for channel plotting
+        rec_label: Recording label for titles
+        y_label: Y-axis label (default: "Amplitude (pT)")
+        axis_label: Axis component label (default: "X")
     """
+
     n_raw = min(len(raw_channels), len(colors), len(raw_labels))
     n_filtered = min(len(filtered_channels), len(colors), len(filtered_labels))
     fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
@@ -214,10 +229,10 @@ def plot_ica_max_amplitudes(ica_components, component_names=None, title="Max Amp
     """
     Plots a horizontal barplot of the max amplitude of each ICA component, with value annotations.
 
-    Parameters:
-        ica_components (np.ndarray): Array of shape (n_components, n_samples)
-        component_names (list or None): List of component names (length n_components)
-        title (str): Title for the plot
+    Args:
+        ica_components: Array of shape (n_components, n_samples)
+        component_names: List of component names (default: None, auto-generated)
+        title: Plot title (default: "Max Amplitude of ICA Components")
     """
     max_amplitudes = np.max(np.abs(ica_components), axis=1)
     n_components = ica_components.shape[0]
@@ -238,7 +253,18 @@ import matplotlib.pyplot as plt
 
 def plot_single_ica_power_spectrum(component, ax, sfreq=375, window_length=1.0, overlap=0.5, freq_range=(1, 100)):
     """
-    Plot the power spectrum of a single ICA component on the given axis.
+    Plot power spectrum of a single ICA component on given axis.
+    
+    Calculates and plots the power spectrum of an ICA component using
+    windowed segments with overlap, displaying on a logarithmic scale.
+
+        Args:
+        component: Single ICA component signal array
+        ax: Matplotlib axis object to plot on
+        sfreq: Sampling frequency in Hz (default: 375)
+        window_length: Window length in seconds (default: 1.0)
+        overlap: Overlap fraction between windows (default: 0.5)
+        freq_range: Frequency range tuple (min, max) in Hz (default: (1, 100))
     """
     freqs, all_psds, _ = calculate_individual_power_spectra(
         component, sfreq, window_length, overlap
@@ -255,13 +281,13 @@ def plot_single_ica_power_spectrum(component, ax, sfreq=375, window_length=1.0, 
 
 def plot_ica_power_spectra_grid(ica_components, plot_power_spectrum_func, component_names=None, title="ICA Power Spectra (4x4)"):
     """
-    Plots a 4x4 grid of power spectra for the first 16 ICA components.
+    Plot power spectra for multiple ICA components in a 4x4 grid layout.
 
-    Parameters:
-        ica_components (np.ndarray): Array of shape (n_components, n_samples)
-        plot_power_spectrum_func (callable): Function to plot power spectrum, signature (component, ax)
-        component_names (list or None): List of component names (length n_components)
-        title (str): Title for the figure
+    Args:
+        ica_components: Array of shape (n_components, n_samples)
+        plot_power_spectrum_func: Function to plot power spectrum with signature (component, ax)
+        component_names: List of component names (default: None, auto-generated)
+        title: Figure title (default: "ICA Power Spectra (4x4)")
     """
     n_components = min(16, ica_components.shape[0])
     if component_names is None:
@@ -280,10 +306,23 @@ def plot_ica_power_spectra_grid(ica_components, plot_power_spectrum_func, compon
     plt.show()
 
 def plot_ica_components(ica_signals, time, axis_label, rec_label):
+    
+    """
+    Plot ICA component time series in vertically stacked subplots.
+    
+    Creates a vertical stack of subplots, one for each ICA component,
+    showing their time series evolution.
+    
+    Args:
+        ica_signals: Array of shape (n_components, n_samples)
+        time: Time vector for x-axis
+        axis_label: Label for the axis/component type
+        rec_label: Recording label for the title
+    """
     n_components = ica_signals.shape[0]
     n_cols = 1
     n_rows = n_components
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 2.2 * n_rows), sharex=True)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 2.2 * n_rows), sharex=True)
     if n_components == 1:
         axes = [axes]
     for i in range(n_components):
@@ -292,4 +331,4 @@ def plot_ica_components(ica_signals, time, axis_label, rec_label):
     fig.suptitle(f'ICA Components ({axis_label} axis) - {rec_label}', fontsize=10)
     plt.xlabel('Time (s)')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.show() 
+    plt.show()
