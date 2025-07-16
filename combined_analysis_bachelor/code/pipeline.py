@@ -6,7 +6,7 @@ import scipy as sp
 from matplotlib.lines import lineStyles
 from scipy.signal import butter, sosfiltfilt
 from scipy.stats import zscore
-from EMG_analysis_bachelor.functions_for_pipeline import get_ch_indices, plot_channel_overview, normalize_emg, \
+from combined_analysis_bachelor.code.functions_for_pipeline import get_ch_indices, plot_channel_overview, normalize_emg, \
     notched_and_filtered, create_df, envelope, rectify
 import matplotlib
 matplotlib.use('Qt5Agg')
@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
  #                                  "test_first_2025-04-07_14-10-04_forearm_upperSide.cnt", preload=True)
 #ACC_only_test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/Accelerometer/"
 #                                   "Test_Two_Charite_ACC_2025-06-10_11-53-04.cnt", preload=True)
-leg_checks = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/EMG/Test_Leg_positions_synchron.cnt", preload=True)
+leg_checks = mne.io.read_raw_cnt("C:/Users/User/Documents/bachelorarbeit/data/EMG/Test_Leg_positions_synchron.cnt", preload=True)
 
 onsets = leg_checks.annotations.onset
 onsets = onsets * 1000
