@@ -9,7 +9,6 @@ import mne
 from mne.time_frequency import Spectrum
 from sklearn.decomposition import FastICA
 from source.plot_functions import (
-    calculate_individual_power_spectra,
     plot_all_channel_power_spectra,
     plot_meg_2x3_grid,
     plot_channels_comparison,
@@ -41,21 +40,21 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # Go up one directory and then into Data
 data_dir = os.path.join(base_dir, '..', 'Data')
 
-file_path_1 = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
-file_path_11 = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
+file_path_start = os.path.join(data_dir, "plfp65_rec5_13.11.2024_13-24-55_array1.lvm")
+file_path_last = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
 
 # extract sampling frequency from data file
 SFREQ = 375  # Hz, as per the data files
 
 
-df_start = pd.read_csv(file_path_1, header= 22, sep='\t')
-df_last = pd.read_csv(file_path_11, header=22, sep='\t')
+df_start = pd.read_csv(file_path_start, header= 22, sep='\t')
+df_last = pd.read_csv(file_path_last, header=22, sep='\t')
 
 # Extract recording names from file paths
-rec1_name = file_path_1.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec1']
-rec11_name = file_path_11.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec11']
-rec1_label = '_'.join(rec1_name)
-rec11_label = '_'.join(rec11_name) 
+rec_start_name = file_path_start.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec_start']
+rec_last_name = file_path_last.split('/')[-1].split('_')[0:2]  # ['plfp65', 'rec_last']
+rec_start_label = '_'.join(rec_start_name)
+rec_last_label = '_'.join(rec_last_name) 
 
 # It seems that the column "Comment" is composed by Nan values, so I decide to remove it from the frame
 df_start = df_start.drop(columns=["Comment"])
@@ -92,7 +91,7 @@ Z_channels_last = Z_channels_last[:20]
 X_channels_names = X_channels_names[:20]  # Also trim the names to match
 
 ######################################################
-# Create MNE RawArray objects for both recordings
+# 
 
 # Convert start recording channels to pT
 X_channels_start_raw = [channel * 1e-12 for channel in X_channels_start]
@@ -106,6 +105,7 @@ Z_channels_last_raw = [channel * 1e-12 for channel in Z_channels_last]
 
 norms_start_raw = calculate_channel_norms(X_channels_start_raw, Y_channels_start_raw, Z_channels_start_raw)
 norms_last_raw = calculate_channel_norms(X_channels_last_raw, Y_channels_last_raw, Z_channels_last_raw)
+
 X_channels_names_raw = X_channels_names[:20] 
 Y_channels_names_raw = Y_channels_names[:20] 
 Z_channels_names_raw = Z_channels_names[:20] 
@@ -117,6 +117,8 @@ Z_channels_names_raw = Z_channels_names[:20]
 # Exclude channels 5, 6, 13, 17 and 20 from all components
 channels_to_exclude = [4, 5, 12, 16, 19]
 print("\nExcluding channels 5, 6, 13, 17 and 20 from all components...")
+# Create list of channel numbers (excluding 5, 6, 13, and 20)
+channel_numbers = [i+1 for i in range(20) if i not in channels_to_exclude]
 
 def remove_channels(channel_list, indices):
     return [channel for i, channel in enumerate(channel_list) if i not in indices] 
@@ -136,24 +138,6 @@ X_channels_names = remove_channels(X_channels_names, channels_to_exclude)
 
 print(f'After excluding channels {channels_to_exclude}')
 print('we are considering: ', len(X_channels_names), ' channels for each component')
-
-# Create list of channel numbers (excluding 5, 6, 13, and 20)
-channel_numbers = [i+1 for i in range(20) if i not in channels_to_exclude]
-
-# Convert MEG data to picoTesla after extracting channels
-print("\nConverting MEG data to picoTesla...")
-
-# Convert start recording channels to pT
-X_channels_start = [channel * 1e-12 for channel in X_channels_start]
-Y_channels_start = [channel * 1e-12 for channel in Y_channels_start]
-Z_channels_start = [channel * 1e-12 for channel in Z_channels_start]
-
-# Convert last recording channels to pT
-X_channels_last = [channel * 1e-12 for channel in X_channels_last]
-Y_channels_last = [channel * 1e-12 for channel in Y_channels_last]
-Z_channels_last = [channel * 1e-12 for channel in Z_channels_last]
-
-print('Data converted to picoTesla')
 
 
 ################################ Filter the data using MNE:
@@ -188,9 +172,9 @@ time_last = df_last["X_Value"]
 # --- ICA on filtered data ---
 
 # Apply FastICA to all filtered components (example for 'last' dataset)
-X_ica_last, ica_X = apply_fastica_to_channels(X_channels_last)
-Y_ica_last, ica_Y = apply_fastica_to_channels(Y_channels_last)
-Z_ica_last, ica_Z = apply_fastica_to_channels(Z_channels_last)
+X_ica_last, ica_X_last = apply_fastica_to_channels(X_channels_last)
+Y_ica_last, ica_Y_last = apply_fastica_to_channels(Y_channels_last)
+Z_ica_last, ica_Z_last = apply_fastica_to_channels(Z_channels_last)
 
 # For the 'start' dataset:
 X_ica_start, ica_X_start = apply_fastica_to_channels(X_channels_start)
@@ -244,15 +228,13 @@ norms_last_raw_selected = [
 print("\n=== Plotting MEG Raw and Normalized Data ===")
 
 # Create colormap for MEG channels
-n_raw = len(X_channels_names_raw)
-n_channels = n_raw +1
 colors = plt.cm.rainbow(np.linspace(0, 1, 3))  # 3 channels
 # Create colormaps for MEG channels
 colors_all = plt.cm.rainbow(np.linspace(0, 1, len(X_channels_start_raw)))
 colors_filtered_start = plt.cm.rainbow(np.linspace(0, 1, len(X_channels_start)))
 colors_filtered_last = plt.cm.rainbow(np.linspace(0, 1, len(X_channels_last)))
 
-# Plot all channels for rec1 (start)
+# Plot all channels for start recording:
 plot_channels_comparison(
     time_start,
     X_channels_start_raw,
@@ -260,12 +242,12 @@ plot_channels_comparison(
     X_channels_names_raw,
     X_channels_names,
     colors_all,
-    rec1_label,
+    rec_start_label,
     y_label="Amplitude (pT)",
     axis_label="X"
 )
 
-# Plot all channels for rec11 (last)
+# Plot all channels for last recording:
 plot_channels_comparison(
     time_last,
     X_channels_last_raw,
@@ -273,12 +255,12 @@ plot_channels_comparison(
     X_channels_names_raw,
     X_channels_names,
     colors_all,
-    rec11_label,
+    rec_last_label,
     y_label="Amplitude (pT)",
     axis_label="X"
 )
 ########################################
-# Plot selected channels for rec1 (start)
+# Plot selected channels for start recording:
 plot_channels_comparison(
     time_start,
     X_channels_start_raw_selected,
@@ -286,11 +268,11 @@ plot_channels_comparison(
     channel_labels_raw,
     channel_labels_filtered,
     colors,
-    rec1_label,
+    rec_start_label,
     y_label="Amplitude (pT)",
     axis_label="X"
 )
-# Plot selected channels for rec11 (last)
+# Plot selected channels for last recording:
 plot_channels_comparison(
     time_last,
     X_channels_last_raw_selected,
@@ -298,7 +280,7 @@ plot_channels_comparison(
     channel_labels_raw,
     channel_labels_filtered,
     colors,
-    rec11_label,
+    rec_last_label,
     y_label="Amplitude (pT)",
     axis_label="X"
 )
@@ -307,13 +289,13 @@ plot_channels_comparison(
 
 
 # --- Define time frames as boolean masks ---
-# For rec1 (start)
+# For start recording:
 t_1_start = (time_start >= 5) & (time_start < 15)
 t_2_start = (time_start >= 100) & (time_start < 110)
 t_3_start = (time_start >= 280) & (time_start < 290)
 time_windows_start = [t_1_start, t_2_start, t_3_start]
 
-# For rec11 (last)
+# For last recording:
 t_1_last = (time_last >= 0) & (time_last < 10)
 t_2_last = (time_last >= 100) & (time_last < 110)
 t_3_last = (time_last >= 280) & (time_last < 290)
@@ -325,14 +307,14 @@ time_labels = ["0-10 s", "100-110 s", "280-290 s"]
 # Each 2x3 grid figure shows three different time windows(t_1, t_2, t_3) (columns):
 # the first two figures, consider all channels, while the other two show only the selected channels (3, 9, 19).
 # The first row in each grid shows the raw (unfiltered) data, while the second row shows the filtered data.
-# This is done for both the initial (rec1) and final (rec11) recordings.
+# This is done for both the initial rec and final rec recordings.
 
 # PLOTTING THE GRID WITH ALL CHANNELS:
 # Create colormap for MEG channels
 colors_all = plt.cm.rainbow(np.linspace(0, 1, len(X_channels_start_raw)))
 colors_selected = plt.cm.rainbow(np.linspace(0, 1, len(X_channels_start_raw_selected)))
 
-# For rec1 (start) - ALL CHANNELS
+# For start recording: - ALL CHANNELS
 plot_meg_2x3_grid(
     X_channels_start_raw,
     X_channels_start,
@@ -343,11 +325,11 @@ plot_meg_2x3_grid(
     time_labels,
     colors_all,
     colors_filtered_start,
-    f'Raw {rec1_label}', f'Filtered {rec1_label}',
-    f'Raw vs Filtered {rec1_label} - All Channels'
+    f'Raw {rec_start_label}', f'Filtered {rec_start_label}',
+    f'Raw vs Filtered {rec_start_label} - All Channels'
 )
 
-# For rec11 (last) - ALL CHANNELS
+# For last recording: - ALL CHANNELS
 plot_meg_2x3_grid(
     X_channels_last_raw,
     X_channels_last,
@@ -358,15 +340,15 @@ plot_meg_2x3_grid(
     time_labels,
     colors_all,
     colors_filtered_last,
-    f'Raw {rec11_label}', f'Filtered {rec11_label}',
-    f'Raw vs Filtered {rec11_label} - All Channels'
+    f'Raw {rec_last_label}', f'Filtered {rec_last_label}',
+    f'Raw vs Filtered {rec_last_label} - All Channels'
 )
 
 # No channel labels here to keep the figure uncluttered
 
 #############################################################
 # PLOTTING THE GRID JUST FOR CHANNELS 3, 9, 19 (indices 2, 8, 18)
-# For rec1 (start) - SELECTED CHANNELS
+# For start recording: - SELECTED CHANNELS
 plot_meg_2x3_grid(
     X_channels_start_raw_selected,
     X_channels_start_selected,
@@ -377,11 +359,11 @@ plot_meg_2x3_grid(
     time_labels,
     colors_selected,
     colors_selected,
-    f'Raw {rec1_label}', f'Filtered {rec1_label}',
-    f'Raw vs Filtered {rec1_label} - All Channels'
+    f'Raw {rec_start_label}', f'Filtered {rec_start_label}',
+    f'Raw vs Filtered {rec_start_label} - All Channels'
 )
 
-# For rec11 (last) - SELECTED CHANNELS
+# For last recording: - SELECTED CHANNELS
 plot_meg_2x3_grid(
     X_channels_last_raw_selected,
     X_channels_last_selected,
@@ -392,49 +374,47 @@ plot_meg_2x3_grid(
     time_labels,
     colors_selected,
     colors_selected,
-    f'Raw {rec11_label}', f'Filtered {rec11_label}',
-    f'Raw vs Filtered {rec11_label} - All Channels'
+    f'Raw {rec_last_label}', f'Filtered {rec_last_label}',
+    f'Raw vs Filtered {rec_last_label} - All Channels'
 )
 
 ##########################################################
 ##########################################################
 # ICA COMPONENT PLOTS:
 
-# Plot ICA components for rec1 (start)
-plot_ica_components(np.array(X_ica_start), time_start, 'X', rec1_label)
-plot_ica_components(np.array(Y_ica_start), time_start, 'Y', rec1_label)
-plot_ica_components(np.array(Z_ica_start), time_start, 'Z', rec1_label)
+# Plot ICA components for rec_start
+plot_ica_components(X_ica_start, time_start, 'X', rec_start_label)
+plot_ica_components(Y_ica_start, time_start, 'Y', rec_start_label)
+plot_ica_components(Z_ica_start, time_start, 'Z', rec_start_label)
 
-# Plot for X
-plot_ica_components(np.array(X_ica_last), time_last, 'X', rec11_label)
-# Plot for Y
-plot_ica_components(np.array(Y_ica_last), time_last, 'Y', rec11_label)
-# Plot for Z
-plot_ica_components(np.array(Z_ica_last), time_last, 'Z', rec11_label)
+# Plot ICA components for rec_last
+plot_ica_components(X_ica_last, time_last, 'X', rec_last_label)
+plot_ica_components(Y_ica_last, time_last, 'Y', rec_last_label)
+plot_ica_components(Z_ica_last, time_last, 'Z', rec_last_label)
 
 ##########################################################
 #let's analyze the ICA components to identify artifacts
 # Analyze ICA max amplitude to check if there are any random values or artifacts
 
-# For the first recording (rec1)
+# For the first recording
 max_X_ica_start = np.max(np.abs(X_ica_start), axis=1)
 max_Y_ica_start = np.max(np.abs(Y_ica_start), axis=1)
 max_Z_ica_start = np.max(np.abs(Z_ica_start), axis=1)
 
-# Bar plots for rec1 (start):
-plot_ica_max_amplitudes(X_ica_start, title=f'Max Amplitude of ICA Components - {rec1_label} (X)')
-plot_ica_max_amplitudes(Y_ica_start, title=f'Max Amplitude of ICA Components - {rec1_label} (Y)')
-plot_ica_max_amplitudes(Z_ica_start, title=f'Max Amplitude of ICA Components - {rec1_label} (Z)')
+# Bar plots:
+plot_ica_max_amplitudes(X_ica_start, title=f'Max Amplitude of ICA Components - {rec_start_label} (X)')
+plot_ica_max_amplitudes(Y_ica_start, title=f'Max Amplitude of ICA Components - {rec_start_label} (Y)')
+plot_ica_max_amplitudes(Z_ica_start, title=f'Max Amplitude of ICA Components - {rec_start_label} (Z)')
 
-# For the last recording (rec11)
+# For the last recording
 max_X_ica_last = np.max(np.abs(X_ica_last), axis=1)
 max_Y_ica_last = np.max(np.abs(Y_ica_last), axis=1)
 max_Z_ica_last = np.max(np.abs(Z_ica_last), axis=1)
 
-# Bar plots for rec1 (start):
-plot_ica_max_amplitudes(X_ica_last, title=f'Max Amplitude of ICA Components - {rec11_label} (X)')
-plot_ica_max_amplitudes(Y_ica_last, title=f'Max Amplitude of ICA Components - {rec11_label} (Y)')
-plot_ica_max_amplitudes(Z_ica_last, title=f'Max Amplitude of ICA Components - {rec11_label} (Z)')
+# Bar plots:
+plot_ica_max_amplitudes(X_ica_last, title=f'Max Amplitude of ICA Components - {rec_last_label} (X)')
+plot_ica_max_amplitudes(Y_ica_last, title=f'Max Amplitude of ICA Components - {rec_last_label} (Y)')
+plot_ica_max_amplitudes(Z_ica_last, title=f'Max Amplitude of ICA Components - {rec_last_label} (Z)')
 
 ##########################################################
 print('Analyzing ICA components...')
@@ -451,36 +431,36 @@ X_ica_last_clean[11, :] = 0  # C12 (Python is 0-based index, so 12 -> 11)
 Y_ica_last_clean[2, :]  = 0  
 Z_ica_last_clean[5, :]  = 0  
 # Reconstruct the cleaned signals using the ICA model's inverse_transform
-X_channels_last_clean = ica_X.inverse_transform(X_ica_last_clean.T).T
-Y_channels_last_clean = ica_Y.inverse_transform(Y_ica_last_clean.T).T
-Z_channels_last_clean = ica_Z.inverse_transform(Z_ica_last_clean.T).T
+X_channels_last_clean = ica_X_last.inverse_transform(X_ica_last_clean.T).T
+Y_channels_last_clean = ica_Y_last.inverse_transform(Y_ica_last_clean.T).T
+Z_channels_last_clean = ica_Z_last.inverse_transform(Z_ica_last_clean.T).T
 print('ICA components cleaned')
 
 ##########################################################
 ##########################################################
 # ICA compare using power spectra:
 
-# PS of the first recording (rec1)
+# PS of the first recording
 component_names = [f"C{i+1}" for i in range(X_ica_start.shape[0])]
 
 plot_ica_power_spectra_grid(
     X_ica_start,
     plot_single_ica_power_spectrum,
     component_names=component_names,
-    title=f"X Components Power Spectra - {rec1_label}"
+    title=f"X Components Power Spectra - {rec_start_label}"
 )
 
 plot_ica_power_spectra_grid(
     Y_ica_start,
     plot_single_ica_power_spectrum,
     component_names=component_names,
-    title=f"Y Components Power Spectra - {rec1_label}"
+    title=f"Y Components Power Spectra - {rec_start_label}"
 )
 plot_ica_power_spectra_grid(
     Z_ica_start,
     plot_single_ica_power_spectrum,
     component_names=component_names,
-    title=f"Z Components Power Spectra - {rec1_label}"
+    title=f"Z Components Power Spectra - {rec_start_label}"
 )
 
 # PS of the last recording (rec11)
@@ -490,19 +470,19 @@ plot_ica_power_spectra_grid(
     X_ica_last,
     plot_single_ica_power_spectrum,
     component_names=component_names,
-    title=f"X Components Power Spectra - {rec11_label}"
+    title=f"X Components Power Spectra - {rec_last_label}"
 )
 plot_ica_power_spectra_grid(
     Y_ica_last,
     plot_single_ica_power_spectrum,
     component_names=component_names,
-    title=f"Y Components Power Spectra - {rec11_label}"
+    title=f"Y Components Power Spectra - {rec_last_label}"
 )
 plot_ica_power_spectra_grid(
     Z_ica_last,
     plot_single_ica_power_spectrum,
     component_names=component_names,
-    title=f"Z Components Power Spectra - {rec11_label}"
+    title=f"Z Components Power Spectra - {rec_last_label}"
 )
 
 
@@ -520,19 +500,15 @@ norms_last_clean = calculate_channel_norms(
 plot_all_channel_power_spectra(
     norms_last, 
     channel_numbers, 
-    'Vector Norm - (+50min-Rest-Dyskinesia) - (Filtered, Before ICA)'
+    'Vector Norm - (+50min-Rest-Dyskinesia) - (Filtered, Before ICA)',
+    sfreq=SFREQ
 )
-save_dir = os.path.abspath(os.path.join(base_dir, '../plot/presentation/november-dataset'))
-os.makedirs(save_dir, exist_ok=True)
-current_dir = os.getcwd()
-os.chdir(save_dir)
-plt.savefig("PS-before.png", dpi=300, bbox_inches='tight')
-os.chdir(current_dir)
 
 # Plot power spectra for ICA-cleaned data
 plot_all_channel_power_spectra(
     norms_last_clean, 
     channel_numbers, 
-    'Vector Norm - (+50min-Rest-Dyskinesia) - (Filtered + ICA Cleaned)'
+    'Vector Norm - (+50min-Rest-Dyskinesia) - (Filtered + ICA Cleaned)',
+    sfreq=SFREQ
 )
 plt.show()

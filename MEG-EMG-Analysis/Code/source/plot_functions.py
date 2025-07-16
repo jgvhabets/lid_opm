@@ -19,7 +19,7 @@ import mne
 from mne.filter import filter_data
 
 # Function to calculate individual power spectra using windowed segments with overlap
-def calculate_individual_power_spectra(signal, sfreq=375, window_length=1.0, overlap=0.5):
+def calculate_individual_power_spectra(signal, sfreq, window_length=1.0, overlap=0.5):
     """
     Calculate individual power spectra using windowed segments with overlap.
     
@@ -75,7 +75,7 @@ def calculate_individual_power_spectra(signal, sfreq=375, window_length=1.0, ove
     return freqs, all_psds, window_times
 
 
-def plot_all_channel_power_spectra(channels, channel_names, title, sfreq=375, window_length=1.0, overlap=0.5, freq_range=(1, 100)):
+def plot_all_channel_power_spectra(channels, channel_names, title, sfreq, window_length=1.0, overlap=0.5, freq_range=(1, 100)):
     """
     Plot power spectra for all channels in a single figure.
 
@@ -88,7 +88,7 @@ def plot_all_channel_power_spectra(channels, channel_names, title, sfreq=375, wi
         overlap: Overlap between windows as a fraction
         freq_range: Tuple of (min_freq, max_freq) to display
     """
-    # Create figure
+ # Create figure
     plt.figure(figsize=(12, 8))
     
     # Generate colormap for different channels
@@ -251,6 +251,34 @@ def plot_ica_max_amplitudes(ica_components, component_names=None, title="Max Amp
 
 import matplotlib.pyplot as plt
 
+def plot_power_spectrum_func(component, ax, sfreq, window_length=1.0, overlap=0.5, freq_range=(1, 100)):
+    """
+    Plot power spectrum of a single ICA component on given axis.
+    
+    Calculates and plots the power spectrum of an ICA component using
+    windowed segments with overlap, displaying on a logarithmic scale.
+
+        Args:
+        component: Single ICA component signal array
+        ax: Matplotlib axis object to plot on
+        sfreq: Sampling frequency in Hz (default: 375)
+        window_length: Window length in seconds (default: 1.0)
+        overlap: Overlap fraction between windows (default: 0.5)
+        freq_range: Frequency range tuple (min, max) in Hz (default: (1, 100))
+    """
+    freqs, all_psds, _ = calculate_individual_power_spectra(
+        component, sfreq, window_length, overlap
+    )
+    psd_array = np.array(all_psds)
+    avg_psd = np.mean(psd_array, axis=0)
+    freq_mask = (freqs >= freq_range[0]) & (freqs <= freq_range[1])
+    plot_freqs = freqs[freq_mask]
+    plot_psd = avg_psd[freq_mask]
+    ax.semilogy(plot_freqs, plot_psd, color='b', linewidth=1.5, alpha=0.8)
+    ax.set_xlabel('Frequency (Hz)')
+    ax.set_ylabel('Power (pT²/Hz)')
+    ax.grid(True, alpha=0.3)
+
 def plot_single_ica_power_spectrum(component, ax, sfreq=375, window_length=1.0, overlap=0.5, freq_range=(1, 100)):
     """
     Plot power spectrum of a single ICA component on given axis.
@@ -278,6 +306,8 @@ def plot_single_ica_power_spectrum(component, ax, sfreq=375, window_length=1.0, 
     ax.set_xlabel('Frequency (Hz)')
     ax.set_ylabel('Power (pT²/Hz)')
     ax.grid(True, alpha=0.3)
+
+
 
 def plot_ica_power_spectra_grid(ica_components, plot_power_spectrum_func, component_names=None, title="ICA Power Spectra (4x4)"):
     """

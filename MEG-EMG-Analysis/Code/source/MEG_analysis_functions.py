@@ -68,7 +68,7 @@ def apply_fastica_to_channels(channels, n_components=None, random_state=0, max_i
     Apply FastICA to a list of MEG channel arrays (shape: n_channels x n_times).
     
     Args:
-        channels: list or np.ndarray, shape (n_channels, n_times)
+        channels: list or arrays, shape (n_channels, n_times)
         n_components: int or None, number of ICA components (default: n_channels)
         random_state: int, random seed for reproducibility (default: 0)
         max_iter: int, maximum iterations for FastICA convergence (default: 1000)
@@ -82,6 +82,8 @@ def apply_fastica_to_channels(channels, n_components=None, random_state=0, max_i
         n_components = data.shape[0]
     ica = FastICA(n_components=n_components, random_state=random_state, max_iter=max_iter)
     ica_signals = ica.fit_transform(data.T).T  # Transpose to (n_times, n_channels), then back
+    # ica_signals: independent components for analysis/artifact removal
+    # ica: model object for reconstructing cleaned signals later
     return ica_signals, ica
 
 
@@ -117,7 +119,7 @@ def calculate_channel_norms(X_channels, Y_channels, Z_channels):
     return norms
 
 # Function to calculate the power spectrum of a signal:
-def calculate_power_spectrum(signal):
+def calculate_power_spectrum(signal, sfreq):
     """
     Calculate FFT and power spectrum of a signal.
     
@@ -133,7 +135,7 @@ def calculate_power_spectrum(signal):
     """    # Apply FFT
     n = len(signal)
     fft = np.fft.fft(signal) / n  #Normalization
-    freqs = np.fft.fftfreq(n, d=0.002667)  # 375 Hz sampling rate
+    freqs = np.fft.fftfreq(n, d=float(1/sfreq))
     power = np.abs(fft) ** 2  # Power calculation
     
     # Get positive frequencies only and double the values to compensate for removing negatives

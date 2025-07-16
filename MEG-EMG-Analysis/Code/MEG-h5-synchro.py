@@ -1,3 +1,9 @@
+'''
+I need to fix and adapt the power spectrum plotting function in the MEG analysis code,
+in order to make it compatible with any component data.
+'''
+
+
 ############################################################################
 ####### LIBRARIES ##########################################################
 ############################################################################
@@ -7,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
-from sklearn.decomposition import FastICA
 from source.plot_functions import (plot_channels_comparison,
                                    plot_meg_2x3_grid,
                                    plot_ica_components,
@@ -15,23 +20,23 @@ from source.plot_functions import (plot_channels_comparison,
                                    plot_single_ica_power_spectrum,
                                    plot_ica_power_spectra_grid,
                                    plot_all_channel_power_spectra)
-
+# Import MEG analysis functions (add these)
+from source.MEG_analysis_functions import (
+    apply_fastica_to_channels,             
+)
 
 ############################################################################
 ####### MAIN ##############################################################
 ############################################################################
 
 # Paths and filenames
-con_file_path = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/dyskensie_opm_data_230625/"
-con_file_name = 'pilot_dyst_230625_art_blink_mouth.con'
-processed_h5_path = "/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/dyskensie_opm_data_230625/EMG_ACC_data _cutted/opm_healthy_control_data_230625/"
+con_file_path = "../Data/dyskensie_opm_data_230625/"
+con_file_name = 'pilot_dyst_230625_arm_move.con'
+processed_h5_path = "../Data/dyskensie_opm_data_230625/EMG_ACC_data _cutted/opm_healthy_control_data_230625/"
 processed_h5_name = 'PTB-01_EmgAcc_setupA_move1_processed.h5'
-source_path = '/Users/federicobonato/Developer/WORK/lid_opm/MEG-EMG-Analysis/Data/dyskensie_opm_data_230625/EMG_ACC_data'
-source_file_name = 'PTB_01_A_1.2_move.cnt'
 
 # Read the .con file using MNE
 con_raw = mne.io.read_raw_kit(con_file_path + con_file_name, preload=True)
-con_data = con_raw.get_data()
 channel_names = con_raw.ch_names
 
 # Read the processed .h5 file (contains EMG and ACC data)
@@ -44,7 +49,7 @@ processed_h5_times = np.arange(processed_h5_data.shape[1]) / processed_h5_sfreq
 
 # Extract trigger channel from MEG (.con) file (channel 157, index 156)
 trigger_channel = con_raw.get_data(picks=[156])[0]
-sfreq = con_raw.info["sfreq"]  # MEG sampling frequency
+MEG_sfreq = con_raw.info["sfreq"]  # MEG sampling frequency
 
 # Define EMG and ACC channel mappings for the h5 file
 emg_channels = {
@@ -81,7 +86,6 @@ meg_channel_map = {
 }
 meg_channel_indices = list(range(7))
 meg_channel_names = [con_raw.ch_names[i] for i in meg_channel_indices]
-meg_selected_data = con_raw.get_data(picks=meg_channel_indices)
 
 # --- Filtering MEG channels ---
 '''
@@ -104,11 +108,11 @@ print("Applying 50 Hz notch filter to remove line noise...")
 con_raw_filtered.notch_filter(freqs=50, picks=data_channels)
 
 print("Applying 100 Hz notch filter to remove line noise...")
-con_raw_filtered.notch_filter(freqs=100, picks=data_channels)
+con_raw_filtered.notch_filter(freqs=lpass, picks=data_channels)
 
 # Convert to pT
 print("Extracting filtered MEG data and converting to picoTesla (pT)...")
-meg_data = con_raw_filtered.get_data(picks=meg_channel_indices) * 1e12  # Convert to pT
+meg_filtered_data = con_raw_filtered.get_data(picks=meg_channel_indices) * 1e12  # Convert to pT
 
 print("MEG filtering process completed.\n")
 
@@ -117,17 +121,15 @@ print("MEG filtering process completed.\n")
 
 # Raw MEG data (convert to pT for fair comparison)
 meg_raw_data = con_raw.get_data(picks=meg_channel_indices) * 1e12  # shape: (7, n_times)
-meg_filtered_data = meg_data  # already in pT, shape: (7, n_times)
-meg_time = con_raw.times  # or use meg_time_trimmed if you want trimmed
+meg_time = con_raw.times
 
 
 ###################################################################################
 ## SYNCHRONISING THE FILES (align MEG to first minimum of its trigger channel):
 ###################################################################################
 
-# Invert the signal to find minima as peaks
-inverted_trigger = -trigger_channel
-all_minima, properties = find_peaks(inverted_trigger, distance=int(sfreq*0.1))  # at least 100ms apart
+# find minima as peaks
+all_minima, properties = find_peaks(trigger_channel, distance=int(MEG_sfreq*0.1))
 
 # Get the global minimum value
 global_min = np.min(trigger_channel)
@@ -141,18 +143,14 @@ if not deep_minima:
 
 # Take the first deep minimum as t=0
 t_zero_idx = deep_minima[0]
-t_zero = t_zero_idx / sfreq
+t_zero = t_zero_idx / MEG_sfreq
 print(f"First robust trigger minimum at index {t_zero_idx}, time {t_zero:.3f} s, value {trigger_channel[t_zero_idx]:.2f}")
 
-# Align MEG time axis so that t=0 is at the first robust minimum
-meg_time_aligned = np.arange(len(trigger_channel)) / sfreq - t_zero
-
-# ...existing code up to t_zero_idx and t_zero...
 
 # --- Trim MEG data and trigger channel to start from t_zero_idx ---
 trigger_channel_trimmed = trigger_channel[t_zero_idx:]
-meg_data_trimmed = meg_data[:, t_zero_idx:]
-meg_time_trimmed = np.arange(len(trigger_channel_trimmed)) / sfreq  # Now t=0 at first robust minimum
+meg_data_trimmed = meg_filtered_data[:, t_zero_idx:]
+meg_time_trimmed = np.arange(len(trigger_channel_trimmed)) / MEG_sfreq  # Creates a new time axis starting from 0 seconds
 
 # Prepare time axes (use trimmed MEG time for all)
 common_time = meg_time_trimmed  # t=0 at first robust minimum
@@ -196,8 +194,7 @@ for axis in acc_axes:
 
 # Apply FastICA to the filtered MEG data (shape: 7, n_times)
 n_components = meg_filtered_data.shape[0]  # 7
-ica = FastICA(n_components=n_components, random_state=0, max_iter=1000)
-ica_signals = ica.fit_transform(meg_filtered_data.T).T  # shape: (7, n_times)
+ica_signals, ica_model = apply_fastica_to_channels(meg_filtered_data, n_components=n_components)
 
 ###################################################################################
 ###################################################################################
@@ -206,7 +203,7 @@ ica_signals = ica.fit_transform(meg_filtered_data.T).T  # shape: (7, n_times)
 ###################################################################################
 
 # --- Plotting the EMG, ACC and MEG signals ---
-# --- Zoom to t >= 110s for all signals ---
+# --- Zoom to t >= 105s for all signals ---
 t_min = 105  # seconds
 
 # Mask for EMG/ACC (emg_time_trimmed) and MEG (common_time)
@@ -264,11 +261,11 @@ plot_channels_comparison(
 # Define time frames as boolean masks for the grid plot
 MEG_time_start = meg_time  # Use the full MEG time axis for raw/filtered comparison
 
-t_1_start = (MEG_time_start >= 85) & (MEG_time_start < 100)
-t_2_start = (MEG_time_start >= 225) & (MEG_time_start < 240)
-t_3_start = (MEG_time_start >= 325) & (MEG_time_start < 340)
+t_1_start = (MEG_time_start >= 50) & (MEG_time_start < 65)
+t_2_start = (MEG_time_start >= 100) & (MEG_time_start < 115)
+t_3_start = (MEG_time_start >= 185) & (MEG_time_start < 200)
 time_windows_start = [t_1_start, t_2_start, t_3_start]
-time_labels = ["85-100 s", "225-240 s", "325-340 s"]
+time_labels = ["50-65 s", "100-115 s", "185-200 s"]
 
 plot_meg_2x3_grid(
     meg_raw_data,
@@ -294,12 +291,13 @@ plot_ica_components(ica_signals, meg_time, 'All', 'Filtered MEG')
 # Plot max amplitude of ICA components
 plot_ica_max_amplitudes(ica_signals, title='Max Amplitude of ICA Components - Filtered MEG')
 
+# Plot power spectra of ICA components
 component_names = [f"C{i+1}" for i in range(ica_signals.shape[0])]
 plot_ica_power_spectra_grid(
     ica_signals,
     plot_single_ica_power_spectrum,
     component_names=component_names,
-    title="ICA Components Power Spectra - Filtered MEG"
+    title="ICA Components Power Spectra - Filtered MEG",
 )
 
 #############################################################################
@@ -316,21 +314,5 @@ ica_signals_clean[0, :] = 0  # Remove C1
 ica_signals_clean[3, :] = 0  # Remove C4
 
 # --- Reconstruct cleaned MEG data ---
-meg_data_ica_cleaned = ica.inverse_transform(ica_signals_clean.T).T  # shape: (7, n_times)
+meg_data_ica_cleaned = ica_model.inverse_transform(ica_signals_clean.T).T  # shape: (7, n_times)
 
-# --- Plot power spectra for filtered (before ICA) ---
-channel_numbers = list(range(1, meg_filtered_data.shape[0] + 1))  # [1, 2, ..., 7]
-plot_all_channel_power_spectra(
-    meg_filtered_data,  # shape: (7, n_times)
-    channel_numbers,
-    'Power Spectra - Filtered MEG (Before ICA)'
-)
-
-
-# --- Plot power spectra for ICA-cleaned data ---
-plot_all_channel_power_spectra(
-    meg_data_ica_cleaned,  # shape: (7, n_times)
-    channel_numbers,
-    'Power Spectra - Filtered MEG (ICA Cleaned)'
-)
-plt.show()
