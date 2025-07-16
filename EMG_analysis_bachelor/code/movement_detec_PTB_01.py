@@ -46,7 +46,6 @@ sos = butter(4, low_pass, btype='lowpass', output="sos")
 enveloped_rest = sosfiltfilt(sos, x=rectified_rest)
 
 
-
 ### left delt movement detection ###
 A_move1_filtered = pd.read_hdf("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/sub-91/"
                               "PTB_01_data_processed/A_1.2_move_processed.h5", key="data")
@@ -77,8 +76,8 @@ mu_rest, sigma_rest = enveloped_rest.mean(), enveloped_rest.std()
 mu_diff_baseline, sigma_diff_baseline = diff_baseline.mean(), diff_baseline.std()
 
 # set threshold #
-#std_thresh = mu_move_baseline + 14.125 * sigma_move_baseline
-#diff_std_thresh = mu_diff_baseline + 14.125 * sigma_diff_baseline
+std_thresh = mu_move_baseline + 14.125 * sigma_move_baseline
+diff_std_thresh = mu_diff_baseline + 14.125 * sigma_diff_baseline
 p99_thresh = p99 * 4
 diff_p99_thresh = p99_diff * 4
 envelope_activity = enveloped_move > p99_thresh
@@ -100,7 +99,7 @@ if envelope_activity[-1]:
 start_times = np.array(starts) / sf
 end_times = np.array(ends) / sf
 
-# onset criteria : envelope has to be over threshold for min 50ms for example #
+# onset criteria : envelope has to be over threshold for min 1000ms for example #
 min_samples = int(1 * sf)         # 1000-ms-Grenze
 
 labels, n_lbl = label(envelope_activity)
