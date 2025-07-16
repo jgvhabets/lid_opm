@@ -20,22 +20,22 @@ def notched(df, all_columns, times):
     notched_df["Time (s)"] = times
     return notched_df
 
-def notched_and_filtered(raw_df, all_columns, acc_columns, emg_columns, times):
+def notched_and_filtered(raw_df, all_columns, acc_columns, emg_columns, acc_filter, emg_filter):
     filtered_df = raw_df.copy()
     for col in all_columns:
         col_data = raw_df[col].to_numpy()
         notched_col = mne.filter.notch_filter(col_data, freqs=[50, 100, 150], Fs=1000)
         if col in acc_columns:
-            col_filtered = mne.filter.filter_data(notched_col, sfreq=1000, l_freq=1, h_freq=20)
+            col_filtered = mne.filter.filter_data(notched_col, sfreq=1000, l_freq=acc_filter[0], h_freq=acc_filter[1])
             filtered_df[col] = col_filtered
 
         if col in emg_columns:
-            col_filtered = mne.filter.filter_data(notched_col, sfreq=1000, l_freq=30, h_freq=499)
+            col_filtered = mne.filter.filter_data(notched_col, sfreq=1000, l_freq=emg_filter[0], h_freq=emg_filter[1])
             filtered_df[col] = col_filtered
         else:
             continue
-    filtered_df["Time (s)"] = times
-    return filtered_df #könnte das auch noch flexibler machen mit h_freq und l_freq indem ich ne liste als input tu und dann [0]und[1]!
+
+    return filtered_df
 
 def plot_channel_overview(channels, df, title_name, location, emg):
     fig, axs = plt.subplots(4, 3, figsize=(12, 8))
@@ -62,7 +62,7 @@ def rectify(df, all_columns, emg_columns):
     return df
 
 
-def envelope(df, all_columns, emg_columns, times, freq):
+def envelope(df, all_columns, emg_columns, freq):
     emg_envelope_df = df.copy()
     low_pass = freq/(1000/2)
     sos = butter(4, low_pass, btype='lowpass', output="sos")
@@ -73,7 +73,7 @@ def envelope(df, all_columns, emg_columns, times, freq):
             emg_envelope_df[col] = enveloped
         else:
             continue
-    emg_envelope_df["Time (s)"] = times
+
     return emg_envelope_df
 
 
