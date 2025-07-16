@@ -7,7 +7,7 @@ from matplotlib.lines import lineStyles
 
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
-from EMG_analysis_bachelor.functions_for_pipeline import create_df, filtered
+from combined_analysis_bachelor.code.functions_for_pipeline import create_df, notched_and_filtered
 
 #test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/Accelerometer/Test_Accelerometer_2025-04-22_11-53-42.cnt", preload=True) # before any changes in software
 #test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/Accelerometer/Test_Accelerometer_2025-04-22_16-01-45_withNotch.cnt", preload=True) # after the changed settings
@@ -35,7 +35,7 @@ data, times = test[channel_names, :]
 ACC_df = pd.DataFrame(data.T, columns=channel_names)
 ACC_df["Time (s)"] = times
 ACC_df["BIP6"] = ACC_df["BIP6"] * (-1)
-filtered_ACC = filtered(ACC_df,channel_names, ACC, EMG, times)
+filtered_ACC = notched_and_filtered(ACC_df,channel_names, ACC, EMG, times, ) # change to correct args
 
 pairs = [
     ("BIP3", "BIP6"),  # X-axis comparison
