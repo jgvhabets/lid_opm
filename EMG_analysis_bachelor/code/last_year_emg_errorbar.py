@@ -18,10 +18,10 @@ for name in names:
     filepaths.append(filepath)
 
 raw = mne.io.read_raw_kit(filepaths[0], preload=True)
-plt.plot(raw.times[:10000], raw.get_data(picks=['E09'])[0][:10000])
-plt.title("E05: Check for flat peaks (saturation)")
-plt.ylabel("Amplitude (V)")
-plt.show()
+# plt.plot(raw.times[:10000], raw.get_data(picks=['E09'])[0][:10000])
+# plt.title("E05: Check for flat peaks (saturation)")
+# plt.ylabel("Amplitude (V)")
+# plt.show()
 
 def apply_filter(data, sfreq, l_freq, h_freq):
     """Apply bandpass filter to data using MNE"""
@@ -97,8 +97,8 @@ def extract_con_data(file):
 
         acc_data[axis] = apply_filter(data, raw.info['sfreq'], 2, 48)
 
-    #for location in emg_data:
-    #    emg_data[location] *= 1e6
+    for location in emg_data:
+        emg_data[location] *= 1000
 
     # Get filtered EEG
     eeg_data = raw_filtered.get_data(picks=eeg_picks)
@@ -113,9 +113,9 @@ def rest_recordings_df(location):
     recs = ["rest_rec01", "rest_rec03", "rest_rec05", "rest_rec07", "rest_rec09", "rest_rec11"]
     for i, filepath in enumerate(filepaths):
         emg_data, _, _  = extract_con_data(filepath)
-        absolute = np.abs(emg_data[location])
+        #absolute = np.abs(emg_data[location])
         df= pd.DataFrame({
-            "emg_value": absolute,
+            "emg_value": emg_data[location],
             "recording": recs[i],
             "location": location
         })
@@ -155,32 +155,44 @@ all_locs = pd.concat([rest_recs_left_arm, rest_recs_left_leg, rest_recs_right_ar
 #    plt.show()
 
 
-def plot_recording_histograms(data, recordings=("rest_rec01", "rest_rec07")):
+def plot_recording_histograms(data, recordings):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+
+    location_palette = {
+        "right_arm": "blue",
+        "right_leg": "orange",
+        "left_arm": "red",
+        "left_leg": "green"}
 
     for i, rec in enumerate(recordings):
         subset = data[data["recording"] == rec].copy()
 
-        lower = subset["emg_value"].quantile(0.01)
-        upper = subset["emg_value"].quantile(0.99)
-        subset = subset[(subset["emg_value"] >= lower) & (subset["emg_value"] <= upper)]
+        #lower = subset["emg_value"].quantile(0.01)
+        #upper = subset["emg_value"].quantile(0.99)
+        #subset = subset[(subset["emg_value"] >= lower) & (subset["emg_value"] <= upper)]
+
 
         sns.histplot(
             data=subset,
             x="emg_value",
             hue="location",
-            bins=150,
-            kde=True,
+            bins=100,
+            kde=False,
             ax=axes[i],
-            element="step"
+            element="step",
+            palette=location_palette
         )
 
+        axes[i].set_xlim(0,1100)
+        axes[i].set_ylim(0,150)
         axes[i].set_title(f"{rec}")
-        axes[i].set_xlabel("Absolute EMG-values (V) - probably off")
+        axes[i].set_xlabel("Absolute EMG-values (µV)")
         axes[i].set_ylabel("Frequency")
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig("../images/zoomed_histplot_last_year_EMG_PTB.png")
+    #plt.show()
+
 
 plot_recording_histograms(all_locs, recordings=["rest_rec01", "rest_rec07"])
 #plot_histograms(all_locs_long, remove_outliers=True, use_log_y=False, y_max=None)
@@ -204,7 +216,7 @@ def plot_errorbar(location):
     plt.tight_layout()
     plt.show()
 
-plot_errorbar("left_arm")
+#plot_errorbar("left_arm")
 
 
 #x_labels = [f"Recording{i}" for i in [1, 3, 5, 7, 9, 11]]
