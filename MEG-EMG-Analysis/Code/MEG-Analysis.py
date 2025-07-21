@@ -445,20 +445,20 @@ component_names = [f"C{i+1}" for i in range(X_ica_start.shape[0])]
 
 plot_ica_power_spectra_grid(
     X_ica_start,
-    plot_single_ica_power_spectrum,
+    lambda component, ax: plot_single_ica_power_spectrum(component, ax, sfreq=SFREQ),
     component_names=component_names,
     title=f"X Components Power Spectra - {rec_start_label}"
 )
 
 plot_ica_power_spectra_grid(
     Y_ica_start,
-    plot_single_ica_power_spectrum,
+    lambda component, ax: plot_single_ica_power_spectrum(component, ax, sfreq=SFREQ),
     component_names=component_names,
     title=f"Y Components Power Spectra - {rec_start_label}"
 )
 plot_ica_power_spectra_grid(
     Z_ica_start,
-    plot_single_ica_power_spectrum,
+    lambda component, ax: plot_single_ica_power_spectrum(component, ax, sfreq=SFREQ),
     component_names=component_names,
     title=f"Z Components Power Spectra - {rec_start_label}"
 )
@@ -468,22 +468,23 @@ component_names = [f"C{i+1}" for i in range(X_ica_last.shape[0])]
 
 plot_ica_power_spectra_grid(
     X_ica_last,
-    plot_single_ica_power_spectrum,
+    lambda component, ax: plot_single_ica_power_spectrum(component, ax, sfreq=SFREQ),
     component_names=component_names,
     title=f"X Components Power Spectra - {rec_last_label}"
 )
 plot_ica_power_spectra_grid(
     Y_ica_last,
-    plot_single_ica_power_spectrum,
+    lambda component, ax: plot_single_ica_power_spectrum(component, ax, sfreq=SFREQ),
     component_names=component_names,
     title=f"Y Components Power Spectra - {rec_last_label}"
 )
 plot_ica_power_spectra_grid(
     Z_ica_last,
-    plot_single_ica_power_spectrum,
+    lambda component, ax: plot_single_ica_power_spectrum(component, ax, sfreq=SFREQ),
     component_names=component_names,
     title=f"Z Components Power Spectra - {rec_last_label}"
 )
+
 
 
 ##########################################################

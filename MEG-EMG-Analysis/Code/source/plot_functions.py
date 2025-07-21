@@ -279,17 +279,17 @@ def plot_power_spectrum_func(component, ax, sfreq, window_length=1.0, overlap=0.
     ax.set_ylabel('Power (pT²/Hz)')
     ax.grid(True, alpha=0.3)
 
-def plot_single_ica_power_spectrum(component, ax, sfreq=375, window_length=1.0, overlap=0.5, freq_range=(1, 100)):
+def plot_single_ica_power_spectrum(component, ax, sfreq, window_length=1.0, overlap=0.5, freq_range=(1, 100)):
     """
     Plot power spectrum of a single ICA component on given axis.
     
     Calculates and plots the power spectrum of an ICA component using
     windowed segments with overlap, displaying on a logarithmic scale.
 
-        Args:
+    Args:
         component: Single ICA component signal array
         ax: Matplotlib axis object to plot on
-        sfreq: Sampling frequency in Hz (default: 375)
+        sfreq: Sampling frequency in Hz (required parameter)
         window_length: Window length in seconds (default: 1.0)
         overlap: Overlap fraction between windows (default: 0.5)
         freq_range: Frequency range tuple (min, max) in Hz (default: (1, 100))

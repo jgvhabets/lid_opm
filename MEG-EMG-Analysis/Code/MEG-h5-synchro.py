@@ -295,10 +295,11 @@ plot_ica_max_amplitudes(ica_signals, title='Max Amplitude of ICA Components - Fi
 component_names = [f"C{i+1}" for i in range(ica_signals.shape[0])]
 plot_ica_power_spectra_grid(
     ica_signals,
-    plot_single_ica_power_spectrum,
+    lambda component, ax: plot_single_ica_power_spectrum(component, ax, sfreq=MEG_sfreq),
     component_names=component_names,
     title="ICA Components Power Spectra - Filtered MEG",
 )
+
 
 #############################################################################
 '''
@@ -307,7 +308,7 @@ Based on the max amplitude analysis of the ICA components, we are excluding comp
 These components showed the highest amplitudes and are likely to represent artifacts.
 They are set to zero before reconstructing the cleaned MEG data.
 '''
-
+'''
 # --- Remove ICA components C1 and C4 (indices 0 and 3) ---
 ica_signals_clean = ica_signals.copy()
 ica_signals_clean[0, :] = 0  # Remove C1
@@ -315,4 +316,4 @@ ica_signals_clean[3, :] = 0  # Remove C4
 
 # --- Reconstruct cleaned MEG data ---
 meg_data_ica_cleaned = ica_model.inverse_transform(ica_signals_clean.T).T  # shape: (7, n_times)
-
+'''
