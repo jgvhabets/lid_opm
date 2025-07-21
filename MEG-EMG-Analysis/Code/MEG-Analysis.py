@@ -2,6 +2,7 @@
 ### LIBRARIES ###
 #################
 import os
+from os import listdir
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -22,7 +23,8 @@ from source.MEG_analysis_functions import (
     apply_fastica_to_channels,
     apply_meg_filters
 )
-
+from source.find_paths import (get_onedrive_path,
+                               get_available_subs,)
 #######################################################
 
 #################
@@ -34,18 +36,42 @@ from source.MEG_analysis_functions import (
 
 # READING THE FILE AND DATAFRAME CREATION:
 
-# Get the directory where this script is located
-base_dir = os.path.dirname(os.path.abspath(__file__))
+# Use the find_paths functions instead of hardcoded paths
+try:
+    # Try to get the data path using the OneDrive function
+    data_dir = get_onedrive_path('data')  
+    print(f"Data directory found: {data_dir}")
+except:
+    # Fallback to the original method if OneDrive path doesn't work
+    print("OneDrive path not found, using fallback method...")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(base_dir, '..', 'Data')
+
+source_data_path = get_onedrive_path('source_data')
+available_subs = get_available_subs('data', source_data_path)
+print(available_subs)
+
+
+# ------ Define the subject for this analysis ------
+SUB = '02' #dataset from November 2024
+
+# create new source_data subject
+
+sub_source_data_dir = os.path.join(source_data_path, f'sub-{SUB}')
+
+if not os.path.exists(sub_source_data_dir):
+    os.makedirs(sub_source_data_dir)
+
+##################################################
+# Import the data files:
 
 # Go up one directory and then into Data
-data_dir = os.path.join(base_dir, '..', 'Data')
 
-file_path_start = os.path.join(data_dir, "plfp65_rec5_13.11.2024_13-24-55_array1.lvm")
-file_path_last = os.path.join(data_dir, "plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
+file_path_start = os.path.join(sub_source_data_dir, "plfp65/plfp65_rec5_13.11.2024_13-24-55_array1.lvm")
+file_path_last = os.path.join(sub_source_data_dir, "plfp65/plfp65_rec7_13.11.2024_13-42-47_array1.lvm")
 
 # extract sampling frequency from data file
 SFREQ = 375  # Hz, as per the data files
-
 
 df_start = pd.read_csv(file_path_start, header= 22, sep='\t')
 df_last = pd.read_csv(file_path_last, header=22, sep='\t')
@@ -246,7 +272,6 @@ plot_channels_comparison(
     y_label="Amplitude (pT)",
     axis_label="X"
 )
-
 # Plot all channels for last recording:
 plot_channels_comparison(
     time_last,

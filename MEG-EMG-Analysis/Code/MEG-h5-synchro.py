@@ -12,6 +12,7 @@ import mne
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import os
 from scipy.signal import find_peaks
 from source.plot_functions import (plot_channels_comparison,
                                    plot_meg_2x3_grid,
@@ -19,21 +20,53 @@ from source.plot_functions import (plot_channels_comparison,
                                    plot_ica_max_amplitudes,
                                    plot_single_ica_power_spectrum,
                                    plot_ica_power_spectra_grid,
-                                   plot_all_channel_power_spectra)
-# Import MEG analysis functions (add these)
+                                   )
 from source.MEG_analysis_functions import (
     apply_fastica_to_channels,             
 )
+from source.find_paths import (get_onedrive_path,
+                               get_available_subs,)
 
 ############################################################################
 ####### MAIN ##############################################################
 ############################################################################
 
-# Paths and filenames
-con_file_path = "../Data/dyskensie_opm_data_230625/"
+# READING THE FILE AND DATAFRAME CREATION:
+
+# Use the find_paths functions instead of hardcoded paths
+try:
+    # Try to get the data path using the OneDrive function
+    data_dir = get_onedrive_path('data')  
+    print(f"Data directory found: {data_dir}")
+except:
+    # Fallback to the original method if OneDrive path doesn't work
+    print("OneDrive path not found, using fallback method...")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(base_dir, '..', 'Data')
+
+source_data_path = get_onedrive_path('source_data')
+processed_data_path = get_onedrive_path('processed_data')
+
+available_subs_source = get_available_subs('data', source_data_path)
+available_subs_processed = get_available_subs('data', processed_data_path)
+
+print(f'availabe subjects in {source_data_path}', available_subs_source)
+print(f'availabe subjects in {processed_data_path}', available_subs_processed)
+# ------ Define the subject for this analysis ------
+SUB = 'sub-91'  # dataset from June 2025
+
+# create new source_data subject directory
+sub_source_data_dir = os.path.join(source_data_path, SUB)
+
+if not os.path.exists(sub_source_data_dir):
+    os.makedirs(sub_source_data_dir)
+
+# Paths and filenames - now using dynamic paths
+con_file_path = os.path.join(sub_source_data_dir, "OPM_data/")
 con_file_name = 'pilot_dyst_230625_arm_move.con'
-processed_h5_path = "../Data/dyskensie_opm_data_230625/EMG_ACC_data _cutted/opm_healthy_control_data_230625/"
+processed_h5_path = os.path.join(processed_data_path, "EMG_ACC_data/opm_healthy_control_data_230625/")
 processed_h5_name = 'PTB-01_EmgAcc_setupA_move1_processed.h5'
+
 
 # Read the .con file using MNE
 con_raw = mne.io.read_raw_kit(con_file_path + con_file_name, preload=True)
