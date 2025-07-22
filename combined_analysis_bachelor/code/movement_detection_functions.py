@@ -4,7 +4,8 @@ import pandas as pd
 import mne
 
 ### Functions i still need to create ###
-# 1. importing and preprocessing of EMG and ACC # Frage: preprocessing params alle in eine fkt rein?
+# 1. importing of EMG and ACC # von processed data , dann eine envelope funktion machen und eine tkeo - oder diese
+# direkt auch so speichern? - jeroen gefragt...
 # 2. getting Baseline sections (mean and std e.g)
 # 3. movement detection itself (choosing method?, threshold param, activity length param -> output = on/offsets
  # --> for EMG and ACC seperated or together always?
@@ -57,7 +58,7 @@ def fill_activity_mask(on_and_offsets, sampling_freq, time_column):
     for onset, offset in on_and_offsets:
         start = int(round(onset))
         end = int(round(offset))
-        mask[max(0, start):min(len(mask), end + 1)] = True
+        mask[max(0, start):min(len(mask), end + 1)] = True # sicher, dass hier end+1 hin muss?
     return mask
 
 
