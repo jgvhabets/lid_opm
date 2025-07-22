@@ -6,6 +6,8 @@ This file contains utility functions for MEG data analysis including:
 - FastICA application  
 - Channel norm calculations
 - Power spectrum calculations
+- MEG filtering (bandpass and notch filters)
+- MEG data trimming based on trigger channel minima
 
 These functions support the main MEG analysis pipeline.
 """
@@ -14,6 +16,8 @@ import numpy as np
 import mne
 from sklearn.decomposition import FastICA
 from mne.filter import filter_data
+from scipy.signal import find_peaks
+
 
 
 def apply_meg_filters(data, sfreq, l_freq: int = 1, h_freq: int = 100):
@@ -141,4 +145,5 @@ def calculate_power_spectrum(signal, sfreq):
     # Get positive frequencies only and double the values to compensate for removing negatives
     pos_mask = freqs >= 0
     return freqs[pos_mask], 2 * power[pos_mask]
+
 
