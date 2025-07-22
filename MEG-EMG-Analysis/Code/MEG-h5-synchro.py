@@ -57,15 +57,14 @@ SUB = 'sub-91'  # dataset from June 2025
 
 # create new source_data subject directory
 sub_source_data_dir = os.path.join(source_data_path, SUB)
+sub_processed_data_dir = os.path.join(processed_data_path, SUB)
 
-if not os.path.exists(sub_source_data_dir):
-    os.makedirs(sub_source_data_dir)
 
 # Paths and filenames - now using dynamic paths
 con_file_path = os.path.join(sub_source_data_dir, "OPM_data/")
 con_file_name = 'pilot_dyst_230625_arm_move.con'
-processed_h5_path = os.path.join(processed_data_path, "EMG_ACC_data/opm_healthy_control_data_230625/")
-processed_h5_name = 'PTB-01_EmgAcc_setupA_move1_processed.h5'
+processed_h5_path = os.path.join(sub_processed_data_dir, "EMG_ACC_data/")
+processed_h5_name = 'sub-91_EmgAcc_setupA_Move1_processed.h5'
 
 
 # Read the .con file using MNE
