@@ -1,0 +1,100 @@
+{
+  "dataset_info": {
+    "subject_id": "sub-91",
+    "dataset_name": "pilot_dyst_230625",
+    "description": "Dataset from June 2025",
+    "creation_date": "2025-07-23"
+  },
+  
+  "file_paths": {
+    "con_file": {
+      "directory": "OPM_data/",
+      "filename": "pilot_dyst_230625_setupB_mock_dysk_with_tsk.con"
+    },
+    "h5_file": {
+      "directory": "EMG_ACC_data/",
+      "filename": "sub-91_EmgAcc_setupB_MoveMockDys_processed.h5"
+    },
+    "output": {
+      "directory": "OPM_data/",
+      "filename_suffix": "_trimmed_raw.fif"
+    }
+  },
+  
+  "recording_parameters": {
+    "meg": {
+      "sampling_frequency_hz": 2000,
+      "trigger_channel_index": 156,
+      "trigger_channel_number": 157
+    },
+    "emg": {
+      "sampling_frequency_hz": 1000
+    }
+  },
+  
+  "channel_mappings": {
+    "emg_channels": {
+      "right_forearm": "BIP11",
+      "right_delt": "BIP8",
+      "left_forearm": "BIP9",
+      "left_delt": "BIP10",
+      "right_tibialis_anterior": "BIP7",
+      "left_tibialis_anterior": "BIP12",
+      "reference": "Olecranon"
+    },
+    
+    "acc_channels": {
+      "right_hand": {
+        "x": "BIP6",
+        "y": "BIP1",
+        "z": "BIP2"
+      },
+      "left_hand": {
+        "x": "BIP3",
+        "y": "BIP4",
+        "z": "BIP5"
+      }
+    },
+    
+    "meg_channels": {
+      "channel_map": {
+        "C3": "MEG001",
+        "C4": "MEG002",
+        "CZ": "MEG003",
+        "F3": "MEG004",
+        "F4": "MEG005",
+        "P3": "MEG006",
+        "P4": "MEG007"
+      },
+      "channel_indices": [0, 1, 2, 3, 4, 5, 6],
+      "total_channels": 7
+    }
+  },
+  
+  "processing_settings": {
+    "trimming": {
+      "trim_from_trigger_minimum": true,
+      "match_emg_duration": true,
+      "remove_pre_recording_artifacts": true
+    },
+    "plotting": {
+      "figure_size": [12, 8],
+      "show_plots": true,
+      "grid_alpha": 0.3,
+      "line_width": 1
+    },
+    "file_verification": {
+      "check_data_integrity": true,
+      "compare_timelines": true,
+      "print_comparison_stats": true,
+      "overwrite_existing": true
+    }
+  },
+  
+  "file_naming": {
+    "session_part_index": 2,
+    "setup_part_index": 3,
+    "recording_part_index": 4,
+    "filename_separator": "_"
+  }
+}
