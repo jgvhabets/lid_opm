@@ -52,9 +52,9 @@ sub_processed_data_dir = os.path.join(processed_data_path, SUB)
 
 # Paths and filenames - now using dynamic paths
 con_file_path = os.path.join(sub_source_data_dir, "OPM_data/")
-con_file_name = 'pilot_dyst_230625_arm_move.con'
+con_file_name = 'pilot_dyst_230625_setupB_mock_dysk_with_tsk.con'
 processed_h5_path = os.path.join(sub_processed_data_dir, "EMG_ACC_data/")
-processed_h5_name = 'sub-91_EmgAcc_setupA_Move1_processed.h5'
+processed_h5_name = 'sub-91_EmgAcc_setupB_MoveMockDys_processed.h5'
 
 # Read the .con file using MNE
 con_raw = mne.io.read_raw_kit(con_file_path + con_file_name, preload=True)
@@ -201,3 +201,56 @@ ax2.set_xlim(0, processed_h5_times[-1])
 # Adjust layout and show
 plt.tight_layout()
 plt.show()
+
+############################################################################
+####### SAVE TRIMMED MEG DATA ##############################################
+############################################################################
+
+# Define output path and filename
+raw_data_path = get_onedrive_path('raw_data')
+available_subs_raw = get_available_subs('data', raw_data_path)
+sub_raw_data_dir = os.path.join(raw_data_path, SUB)
+
+output_dir = os.path.join(sub_raw_data_dir, "OPM_data/")
+os.makedirs(output_dir, exist_ok=True)
+
+# Create output filename with trimming info following MNE conventions
+original_name = con_file_name.replace('.con', '')
+output_filename = f"{original_name}_trimmed_raw.fif"  # Changed to follow MNE naming convention
+output_full_path = os.path.join(output_dir, output_filename)
+
+print(f"\n=== SAVING TRIMMED MEG DATA ===")
+print(f"Output directory: {output_dir}")
+print(f"Output filename: {output_filename}")
+
+# Save the trimmed MEG data as .fif file
+# This preserves all channel information, sampling rate, and data integrity
+con_raw_final.save(output_full_path, overwrite=True, verbose=False)
+
+print(f"Trimmed MEG data saved successfully!")
+print(f"Full path: {output_full_path}")
+
+# Verify the saved file by loading it back
+print(f"\n=== VERIFICATION ===")
+loaded_raw = mne.io.read_raw_fif(output_full_path, preload=True, verbose=False)
+
+print(f"Original trimmed data:")
+print(f"  - Duration: {con_raw_final.times[-1]:.3f} seconds")
+print(f"  - Samples: {len(con_raw_final.times)}")
+print(f"  - Channels: {len(con_raw_final.ch_names)}")
+print(f"  - Sampling rate: {con_raw_final.info['sfreq']} Hz")
+
+print(f"Loaded saved data:")
+print(f"  - Duration: {loaded_raw.times[-1]:.3f} seconds") 
+print(f"  - Samples: {len(loaded_raw.times)}")
+print(f"  - Channels: {len(loaded_raw.ch_names)}")
+print(f"  - Sampling rate: {loaded_raw.info['sfreq']} Hz")
+
+# Check if data is identical
+data_identical = np.allclose(con_raw_final.get_data(), loaded_raw.get_data())
+print(f"Data integrity check: {'PASSED' if data_identical else 'FAILED'}")
+
+if data_identical:
+    print("✓ File saved successfully with no data loss!")
+else:
+    print("✗ Warning: Data may have been altered during save/load process")
