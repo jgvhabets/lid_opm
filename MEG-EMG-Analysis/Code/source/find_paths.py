@@ -10,7 +10,7 @@ from numpy import logical_and
 
 def get_onedrive_path(folder: str = 'project',):
     """
-    Device and OS independent function to find
+    Device a function to find
     the synced-OneDrive folder where data is stored
     """
     folder_options = ['project', 'figures','data',
@@ -40,9 +40,13 @@ def get_onedrive_path(folder: str = 'project',):
 
         if not 'onedrive' in dir.lower():
             dir_files = listdir(join(path, dir))
-            project_folder = [f for f in dir_files if f.endswith('LID_MEG')][0]
-            project_directory = dir
-
+            lid_meg_folders = [f for f in dir_files if f.endswith('LID_MEG')]
+            
+            # Only proceed if we found a LID_MEG folder
+            if lid_meg_folders:
+                project_folder = lid_meg_folders[0]
+                project_directory = dir
+                break  # Found it, stop looking
         
         else:
             # Handle OneDrive folders - search recursively for LID_MEG project
@@ -60,9 +64,8 @@ def get_onedrive_path(folder: str = 'project',):
                         project_directory = os.path.relpath(root, path)
                         break
                 
-                if not project_folder:
-                    print(f'No project_folder found in OneDrive directory: {dir}')
-                    continue
+                if project_folder:
+                    break  # Found it, stop looking
                     
             except Exception as e:
                 print(f'Error searching OneDrive folder {dir}: {e}')

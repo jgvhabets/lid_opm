@@ -77,12 +77,7 @@
       "match_emg_duration": true,
       "remove_pre_recording_artifacts": true
     },
-    "plotting": {
-      "figure_size": [12, 8],
-      "show_plots": true,
-      "grid_alpha": 0.3,
-      "line_width": 1
-    },
+    
     "file_verification": {
       "check_data_integrity": true,
       "compare_timelines": true,

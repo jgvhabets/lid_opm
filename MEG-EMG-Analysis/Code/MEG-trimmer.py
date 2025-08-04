@@ -18,6 +18,7 @@ from source.find_paths import (get_onedrive_path,
                                get_available_subs,)
 from source.trimmer_functions import (trim_meg_from_trigger_minimum,
                                       trim_meg_to_match_emg_duration)
+from source.MEG_analysis_functions import (apply_meg_filters)
 
 ############################################################################
 ####### FILE IMPORT #######################################################
@@ -50,11 +51,11 @@ SUB = 'sub-91'  # dataset from June 2025
 sub_source_data_dir = os.path.join(source_data_path, SUB)
 sub_processed_data_dir = os.path.join(processed_data_path, SUB)
 
-# Paths and filenames - now using dynamic paths
-con_file_path = os.path.join(sub_source_data_dir, "OPM_data/")
-con_file_name = 'pilot_dyst_230625_setupB_mock_dysk_with_tsk.con'
-processed_h5_path = os.path.join(sub_processed_data_dir, "EMG_ACC_data/")
-processed_h5_name = 'sub-91_EmgAcc_setupB_MoveMockDys_processed.h5'
+# Paths and filenames:
+con_file_path = os.path.join(sub_source_data_dir, "OPM_MEG/")
+con_file_name = 'sub-91_OPM-MEG_setupB_RestMockDys.con'
+processed_h5_path = os.path.join(sub_processed_data_dir, "EMG_ACC")
+processed_h5_name = 'sub-91_EmgAcc_setupB_RestMockDys_processed.h5'
 
 # Read the .con file using MNE
 con_raw = mne.io.read_raw_kit(con_file_path + con_file_name, preload=True)
@@ -73,27 +74,33 @@ MEG_trigger_channel = con_raw.get_data(picks=[156])[0]
 MEG_sfreq = con_raw.info["sfreq"]  # MEG sampling frequency
 
 # Define EMG and ACC channel mappings for the h5 file
+print("Defined EMG channels:", list(processed_h5_channel_names))
+
+"""
+Available channels in processed H5 file:
+- EMG channels: 'brachioradialis_L', 'deltoideus_L', 'tibialisAnterior_L', 
+                'brachioradialis_R', 'deltoideus_R', 'tibialisAnterior_R'
+- ACC channels: 'acc_x_hand_L', 'acc_y_hand_L', 'acc_z_hand_L', 
+                'acc_x_hand_R', 'acc_y_hand_R', 'acc_z_hand_R'
+- Other channels: 'Sync_Time (s)', 'Source_Time (s)', 'SVM_L', 'SVM_R'
+
+EMG channels correspond to:
+- brachioradialis: forearm muscles (flexion/extension)
+- deltoideus: shoulder muscles  
+- tibialisAnterior: leg muscles (dorsiflexion)
+- L/R suffix indicates Left/Right side
+"""
+
 emg_channels = {
-    "right_forearm": "BIP11",
-    "right_delt": "BIP8",
-    "left_forearm": "BIP9",
-    "left_delt": "BIP10",   
-    "right_tibialis_anterior": "BIP7",
-    "left_tibialis_anterior": "BIP12",
-    "reference": "Olecranon"
+    "left_forearm": "brachioradialis_L",
+    "right_forearm": "brachioradialis_R",
+    "left_shoulder": "deltoideus_L", 
+    "right_shoulder": "deltoideus_R",
+    "left_leg": "tibialisAnterior_L",
+    "right_leg": "tibialisAnterior_R"
 }
-acc_channels = {
-    "right_hand": {
-        "y": "BIP1",
-        "z": "BIP2",
-        "x": "BIP6"
-    },
-    "left_hand": {
-        "x": "BIP3",
-        "y": "BIP4",
-        "z": "BIP5"
-    }
-}
+
+
 
 # --- Defining MEG channels ---
 meg_channel_map = {
@@ -110,7 +117,7 @@ meg_channel_names = [con_raw.ch_names[i] for i in meg_channel_indices]
 
 
 ############################################################################
-####### YOUR TRIMMING CODE GOES HERE ######################################
+####### TRIMMING ######################################
 ############################################################################
 trigger_channel_index = 156
 
@@ -168,6 +175,27 @@ else:
     print("EMG is longer than or equal to MEG. No additional trimming needed.")
     con_raw_final = con_raw_trimmed
 
+#############################################################
+### FILTERING ###
+
+lpass = 100  # Hz
+Hpass = 1    # Hz
+
+print(f"Applying band-pass filter: {Hpass} - {lpass} Hz")
+
+# Get MEG data from the Raw object
+meg_data = con_raw_final.get_data(picks=mne.pick_types(con_raw_final.info, meg=True))
+
+# Apply filters to MEG data
+meg_data_filtered = apply_meg_filters(meg_data, MEG_sfreq, l_freq=Hpass, h_freq=lpass)
+
+# Create a copy of the raw object and replace the MEG data with filtered data
+con_raw_filtered = con_raw_final.copy()
+meg_picks = mne.pick_types(con_raw_filtered.info, meg=True)
+con_raw_filtered._data[meg_picks] = meg_data_filtered
+
+print("MEG data filtering completed!")
+
 
 ############################################################################
 ############################################################################
@@ -177,17 +205,19 @@ else:
 # Create figure with two subplots
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
 
-# Extract trimmed trigger channel
-trigger_channel_final = con_raw_final.get_data(picks=[156])[0]
-trimmed_times = con_raw_final.times
+# Extract C3 MEG channel data (filtered)
+# C3 corresponds to MEG001 (index 0 based on your meg_channel_map)
+c3_channel_idx = 0  # MEG001 is the first MEG channel
+c3_filtered_data = con_raw_filtered.get_data(picks=[c3_channel_idx])[0]
+filtered_times = con_raw_filtered.times
 
-# Plot 1: Trimmed MEG trigger channel
-ax1.plot(trimmed_times, trigger_channel_final, 'b-', linewidth=1)
-ax1.set_title('Trimmed MEG Trigger Channel (starts from first deep minimum)', fontsize=12)
+# Plot 1: Filtered C3 MEG channel
+ax1.plot(filtered_times, c3_filtered_data, 'g-', linewidth=1)
+ax1.set_title('Filtered C3 MEG Channel (1-100 Hz bandpass + notch filters)', fontsize=12)
 ax1.set_xlabel('Time (s)')
-ax1.set_ylabel('Trigger Signal')
+ax1.set_ylabel('MEG Signal (T)')
 ax1.grid(True, alpha=0.3)
-ax1.set_xlim(0, trimmed_times[-1])
+ax1.set_xlim(0, filtered_times[-1])
 
 # Plot 2: EMG right forearm channel
 emg_right_forearm_data = processed_h5_df[emg_channels["right_forearm"]].values
@@ -207,16 +237,16 @@ plt.show()
 ############################################################################
 
 # Define output path and filename
-raw_data_path = get_onedrive_path('raw_data')
-available_subs_raw = get_available_subs('data', raw_data_path)
-sub_raw_data_dir = os.path.join(raw_data_path, SUB)
+processed_data_path = get_onedrive_path('processed_data')
+available_subs_processed = get_available_subs('data', processed_data_path)
+sub_processed_data_dir = os.path.join(processed_data_path, SUB)
 
-output_dir = os.path.join(sub_raw_data_dir, "OPM_data/")
+output_dir = os.path.join(sub_processed_data_dir, "OPM_MEG/")
 os.makedirs(output_dir, exist_ok=True)
 
 # Create output filename with trimming info following MNE conventions
 original_name = con_file_name.replace('.con', '')
-output_filename = f"{original_name}_trimmed_raw.fif"  # Changed to follow MNE naming convention
+output_filename = f"{original_name}_processed.fif"  # Changed to follow MNE naming convention
 output_full_path = os.path.join(output_dir, output_filename)
 
 print(f"\n=== SAVING TRIMMED MEG DATA ===")
@@ -225,32 +255,8 @@ print(f"Output filename: {output_filename}")
 
 # Save the trimmed MEG data as .fif file
 # This preserves all channel information, sampling rate, and data integrity
-con_raw_final.save(output_full_path, overwrite=True, verbose=False)
+con_raw_filtered.save(output_full_path, overwrite=True, verbose=False)
 
 print(f"Trimmed MEG data saved successfully!")
 print(f"Full path: {output_full_path}")
 
-# Verify the saved file by loading it back
-print(f"\n=== VERIFICATION ===")
-loaded_raw = mne.io.read_raw_fif(output_full_path, preload=True, verbose=False)
-
-print(f"Original trimmed data:")
-print(f"  - Duration: {con_raw_final.times[-1]:.3f} seconds")
-print(f"  - Samples: {len(con_raw_final.times)}")
-print(f"  - Channels: {len(con_raw_final.ch_names)}")
-print(f"  - Sampling rate: {con_raw_final.info['sfreq']} Hz")
-
-print(f"Loaded saved data:")
-print(f"  - Duration: {loaded_raw.times[-1]:.3f} seconds") 
-print(f"  - Samples: {len(loaded_raw.times)}")
-print(f"  - Channels: {len(loaded_raw.ch_names)}")
-print(f"  - Sampling rate: {loaded_raw.info['sfreq']} Hz")
-
-# Check if data is identical
-data_identical = np.allclose(con_raw_final.get_data(), loaded_raw.get_data())
-print(f"Data integrity check: {'PASSED' if data_identical else 'FAILED'}")
-
-if data_identical:
-    print("✓ File saved successfully with no data loss!")
-else:
-    print("✗ Warning: Data may have been altered during save/load process")
