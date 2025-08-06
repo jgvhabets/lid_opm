@@ -61,9 +61,9 @@ sub_processed_data_dir = os.path.join(processed_data_path, SUB)
 
 
 # Paths and filenames - now using dynamic paths
-con_file_path = os.path.join(sub_source_data_dir, "OPM_data/")
-con_file_name = 'pilot_dyst_230625_arm_move.con'
-processed_h5_path = os.path.join(sub_processed_data_dir, "EMG_ACC_data/")
+con_file_path = os.path.join(sub_source_data_dir, "OPM_MEG/")
+con_file_name = 'sub-91_OPM-MEG_setupA_Move1.con'
+processed_h5_path = os.path.join(sub_processed_data_dir, "EMG_ACC/")
 processed_h5_name = 'sub-91_EmgAcc_setupA_Move1_processed.h5'
 
 
