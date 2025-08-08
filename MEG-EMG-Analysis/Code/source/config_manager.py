@@ -9,6 +9,7 @@ import json
 import os
 from typing import Dict, Any, List, Tuple
 import mne
+from mne.preprocessing import compute_proj_hfc
 from MEG_analysis_functions import apply_meg_filters
 
 
@@ -88,64 +89,90 @@ def load_and_display_config(subject_id: str, config_dir: str = '../configs',
     display_available_options(config, verbose)
     return config
 
-def preprocess_meg_data(raw, first_sfreq, target_sfreq, l_freq, h_freq, notch_freqs, verbose=True):
+def preprocess_meg_data(raw, start_sfreq, target_sfreq, l_freq, h_freq, notch_freqs, hfc_components, verbose=True):
     """
-    Apply standard MEG preprocessing pipeline: downsampling and filtering.
+    Apply standard MEG preprocessing pipeline: downsampling, HFC, then filtering.
     
     Args:
         raw (mne.io.Raw): Input MNE Raw object
         target_sfreq (int): Target sampling frequency in Hz - REQUIRED
-        l_freq (int): Low frequency cutoff for bandpass filter in Hz - REQUIRED  
+        l_freq (int): Low frequency cutoff for bandpass filter in Hz - REQUIRED
         h_freq (int): High frequency cutoff for bandpass filter in Hz - REQUIRED
         notch_freqs (list): List of frequencies for notch filtering in Hz - REQUIRED
+        hfc_components (int): Number of HFC components to compute - REQUIRED
+        verbose (bool): Whether to print preprocessing information
         
     Returns:
         tuple: (raw_preprocessed, preprocessing_info)
-            - raw_preprocessed: MNE Raw object with preprocessing applied
-            - preprocessing_info: dict with preprocessing details and statistics
     """
+
+    # Make a copy of the raw data to avoid modifying the original:
+    raw_copy = raw.copy()
+
+    # Store original info
+    original_sfreq = start_sfreq
+    original_duration = raw_copy.times[-1]
     
     # STEP 1: DOWNSAMPLING
     if verbose:
         print("\n" + "="*50)
         print("STEP 1: DOWNSAMPLING")
         print("="*50)
-    
-    # Only downsample if current frequency is different from target
-    if raw.info['sfreq'] != target_sfreq:
-        raw_downsampled = raw.resample(target_sfreq, verbose=False)
-        if verbose:
-            print(f"Downsampled from {first_sfreq} Hz to {target_sfreq} Hz")
-            print(f"New data shape: {raw_downsampled.get_data().shape}")
 
+    if raw_copy.info['sfreq'] != target_sfreq:
+        raw_downsampled = raw_copy.resample(target_sfreq, verbose=False)
+        if verbose:
+            print(f"Downsampled from {original_sfreq} Hz to {target_sfreq} Hz")
     else:
-        raw_downsampled = raw.copy()
-        if verbose:\
+        raw_downsampled = raw_copy.copy()
+        if verbose:
             print(f"No downsampling needed (already at {target_sfreq} Hz)")
     
-    # STEP 2: FILTERING
+    # STEP 2: HOMOGENEOUS FIELD CORRECTION (HFC)
     if verbose:
         print("\n" + "="*50)
-        print("STEP 2: FILTERING (LINE NOISE REMOVAL)")
+        print("STEP 2: HOMOGENEOUS FIELD CORRECTION (HFC)")
+        print("="*50)
+    
+    try:
+        # Compute HFC projectors
+        proj_hfc = compute_proj_hfc(raw_downsampled.info, order=hfc_components)
+        
+        # Apply HFC projectors
+        raw_hfc = raw_downsampled.copy()
+        raw_hfc.add_proj(proj_hfc)
+        raw_hfc.apply_proj()
+        
+        if verbose:
+            print(f"Applied HFC with {len(proj_hfc)} components")
+            
+        
+    except Exception as e:
+        if verbose:
+            print(f"HFC failed: {str(e)}")
+            print("Continuing without HFC")
+        raw_hfc = raw_downsampled.copy()
+    
+    # STEP 3: FILTERING (LINE NOISE REMOVAL)
+    if verbose:
+        print("\n" + "="*50)
+        print("STEP 3: FILTERING (LINE NOISE REMOVAL)")
         print("="*50)
 
-
-    # Get data for filtering:
-    downsampled_data = raw_downsampled.get_data()
+    hfc_data = raw_hfc.get_data()
     
-    # Apply filters - ALL parameters come from user input
+    
     try:
         filtered_data = apply_meg_filters(
-            data=downsampled_data,
-            sfreq=raw_downsampled.info['sfreq'],
+            data=hfc_data,
+            sfreq=raw_hfc.info['sfreq'],
             l_freq=l_freq,
             h_freq=h_freq
         )
         
-        # Create new raw object with filtered data
         raw_preprocessed = mne.io.RawArray(
             filtered_data,
-            raw_downsampled.info.copy(),
+            raw_hfc.info.copy(),
             verbose=False
         )
         
@@ -153,10 +180,9 @@ def preprocess_meg_data(raw, first_sfreq, target_sfreq, l_freq, h_freq, notch_fr
             print(f"Applied bandpass filter: {l_freq}-{h_freq} Hz")
             print(f"Applied notch filters at: {notch_freqs} Hz")
         
-        
     except Exception as e:
         if verbose:
             print(f"Filtering failed: {str(e)}")
-        raw_preprocessed = raw_downsampled
+        raw_preprocessed = raw_hfc
     
     return raw_preprocessed

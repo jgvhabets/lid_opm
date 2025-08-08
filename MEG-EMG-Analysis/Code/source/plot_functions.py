@@ -124,7 +124,7 @@ def plot_all_channel_power_spectra(channels, channel_names, title, sfreq, window
 def plot_meg_2x3_grid(
     data_list_A,         # list of arrays (channels) for dataset A
     data_list_B,         # list of arrays (channels) for dataset B
-    time_vector,         # time array (np.array or pd.Series)
+    time_vector,       # time array (np.array or pd.Series)
     time_windows,        # list of 3 boolean masks
     channel_labels_A,    # list of channel labels for dataset A
     channel_labels_B,    # list of channel labels for dataset B
@@ -182,8 +182,8 @@ def plot_meg_2x3_grid(
     plt.show()
 
 def plot_channels_comparison(
-    time, raw_channels, filtered_channels, raw_labels, filtered_labels, colors, 
-    rec_label, y_label="Amplitude (pT)", axis_label="X"
+    time_0, time_1, raw_channels, filtered_channels, raw_labels, filtered_labels, colors, 
+    rec_label, y_label, axis_label, sync_ylim
 ):
     """
     Plot comparison between raw and filtered MEG channels in stacked subplots.
@@ -208,18 +208,25 @@ def plot_channels_comparison(
     fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
     # Raw
     for i in range(n_raw):
-        axes[0].plot(time, raw_channels[i], color=colors[i], linewidth=0.6, label=raw_labels[i])
+        axes[0].plot(time_0, raw_channels[i], color=colors[i], linewidth=0.6, label=raw_labels[i])
     axes[0].set_title(f'MEG {axis_label} Component - {rec_label} - Raw (Selected)')
     axes[0].set_ylabel(y_label)
     axes[0].grid(True, alpha=0.3)
     axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
     # Filtered
     for i in range(n_filtered):
-        axes[1].plot(time, filtered_channels[i], color=colors[i], linewidth=0.6, label=filtered_labels[i])
+        axes[1].plot(time_1, filtered_channels[i], color=colors[i], linewidth=0.6, label=filtered_labels[i])
     axes[1].set_title(f'MEG {axis_label} Component - {rec_label} - Filtered (Selected)')
     axes[1].set_ylabel(y_label)
     axes[1].grid(True, alpha=0.3)
     axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    if sync_ylim:
+        fig = plt.gcf()
+        axes = fig.get_axes()
+        if len(axes) >= 2:
+            y_limits = axes[0].get_ylim()  # Get limits from raw data subplot
+            axes[1].set_ylim(y_limits)    # Apply to filtered subplot
+    
     plt.tight_layout()
     plt.subplots_adjust(top=0.95)
     plt.show()
