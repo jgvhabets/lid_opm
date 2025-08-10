@@ -6,6 +6,7 @@ configuration files with support for multiple data types (source, raw, processed
 """
 
 import json
+import numpy as np
 import os
 from typing import Dict, Any, List, Tuple
 import mne
@@ -186,3 +187,43 @@ def preprocess_meg_data(raw, start_sfreq, target_sfreq, l_freq, h_freq, notch_fr
         raw_preprocessed = raw_hfc
     
     return raw_preprocessed
+
+def remove_ica_artifacts(preprocessed_channels, ica_signals, ica_model, artifact_components, verbose=True):
+    """
+    Remove specified ICA components (artifacts) from preprocessed MEG data.
+    
+    Args:
+        preprocessed_channels (list): List of preprocessed MEG channel arrays
+        ica_signals (np.array): ICA components (n_components, n_times)
+        ica_model: Fitted ICA model from sklearn
+        artifact_components (list): List of component indices to remove (1-based: ICA-1, ICA-2, etc.)
+        verbose (bool): Print removal information
+        
+    Returns:
+        list: MEG channels with artifacts removed
+    """
+    # Convert 1-based to 0-based indexing
+    artifact_indices = [comp - 1 for comp in artifact_components]
+
+    # Convert preprocessed channels to array format
+    meg_data_array = np.array(preprocessed_channels)
+    
+    # Create a copy of ICA signals for modification
+    ica_clean = ica_signals.copy()
+        
+    # Zero out the artifact components
+    for idx, component_idx in enumerate(artifact_indices):
+        if 0 <= component_idx < ica_clean.shape[0]:
+            ica_clean[component_idx, :] = 0
+            if verbose:
+                print(f" ICA-{artifact_components[idx]} removed")
+        else:
+            print(f"Warning: ICA-{artifact_components[idx]} out of range (max: ICA-{ica_clean.shape[0]})")
+    
+    # Reconstruct the cleaned data using the inverse ICA transformation
+    cleaned_data = ica_model.inverse_transform(ica_clean.T).T
+    
+    # Convert back to list format for consistency
+    cleaned_channels = [cleaned_data[i] for i in range(cleaned_data.shape[0])]
+    
+    return cleaned_channels
