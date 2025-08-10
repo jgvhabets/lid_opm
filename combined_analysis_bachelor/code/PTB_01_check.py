@@ -70,10 +70,10 @@ A_rest_data[1] *= -1 # inverting y-Axis from left hand sensor
 A_rest_data[6] *= -1 # invert x-Axis from right hand sensor
 
 # check where to trim
-#plt.figure()
-#plt.plot(A_rest_times, A_rest_data[6])
-#plt.axvline(x=onsets, color="black")
-#plt.show()
+plt.figure()
+plt.plot(A_rest_times, A_rest_data[-3])
+plt.axvline(x=sync_trig, color="black")
+plt.show()
 
 # trimming #
 A_rest_start = int(onsets[0] + 10 * sf) # = 10 secs after Trigger Signal (=5 secs after Tap) (10 * 1000Hz)
