@@ -5,7 +5,7 @@ import os
 
 ### make into one function! ###
 
-def show_raw_data(sub, raw_paths, dType='emg_acc'): # similar one in file "get_sub_dir"
+def get_filepaths_filenames(sub, paths, dType='emg_acc'): # similar one in file "get_sub_dir"
     """
     loops through paths to get out filepaths and filenames
     :param sub: sub-ID
@@ -13,11 +13,11 @@ def show_raw_data(sub, raw_paths, dType='emg_acc'): # similar one in file "get_s
     :return: filepaths and filenames for each file
     """
 
-    if dType == 'emg_acc': folder = 'EMG_ACC_data'
+    if dType == 'emg_acc': folder = 'EMG_ACC'
 
-    sub_rawdata_dir = os.path.join(raw_paths,
+    sub_rawdata_dir = os.path.join(paths,
                                    f'sub-{sub}',
-                                   folder)
+                                   folder,"class_processed")
 
     raw_files = os.listdir(sub_rawdata_dir)
 
@@ -35,7 +35,7 @@ def show_processed_data(sub, processed_paths, dType="emg_acc"):
     :param dType: set to EMG_ACC data
     :return: filepaths and filenames for each file
     """
-    if dType == "emg_acc": folder = "EMG_ACC_data"
+    if dType == "emg_acc": folder = "EMG_ACC"
 
     sub_procdata_dir = os.path.join(processed_paths,
                                     f"sub-{sub}",
@@ -49,27 +49,27 @@ def show_processed_data(sub, processed_paths, dType="emg_acc"):
     return sub_procdata_filepaths, processed_files
 
 
-def read_in_h5_to_df(h5_filepaths):
+def read_in_h5(filepath):
     """
-    takes in a list of filepaths (of h5 files)
-    - cuts filename accordingly to only get out the name of the task
-    - reads them in and turns them into dataframes for each file
+    - reads in an h5 file (output is a df)
+    - splits the filepath to the task_name
 
-    output:
-    list of the dataframes
-    task_names (for usage in plotting)
+    :param filepath: list of filepaths for one SUB
+    :return: df for one file (=one task) and the corresponding name of the task for
+    better overview
     """
-    task_names = []
-    dfs = []
-    for filepath in h5_filepaths:
 
-        filename = os.path.basename(filepath)
-        filename_split = filename.split("_")
-        task_name = filename_split[2] +  "_" + filename_split[3] + "_" + filename_split[4][:-3]
-        task_names.append(task_name)
+    processed = pd.read_hdf(filepath, key="data")
+    processed_df = pd.DataFrame(processed)
 
-        data = pd.read_hdf(filepath, key="data")
-        df = pd.DataFrame(data) # make sure its a df, not an object
-        dfs.append(df)
-    return task_names, dfs
+    filename = os.path.basename(filepath)
+    filename_split = filename.split("_")
+    print(filename_split)
+    task_name = filename_split[2] + "_" + filename_split[3] + "_" + filename_split[4][:-3]
+
+    return processed_df, task_name
+
+
+
+
 
