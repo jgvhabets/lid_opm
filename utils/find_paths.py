@@ -8,14 +8,17 @@ from numpy import logical_and
 
 
 
-def get_onedrive_path(folder: str = 'project',):
+def get_onedrive_path(onedrive_version:str="onedrive_charite", folder: str = 'project'):
     """
     Device and OS independent function to find
     the synced-OneDrive folder where data is stored
     """
     folder_options = ['project', 'figures','data',
                       'raw_data', 'source_data',
-                      'processed_data', 'results',]
+                      'processed_data', 'results',
+                      "classification_data",
+                      "onset_data"
+                      ]
     
     if folder.lower() not in folder_options:
         raise ValueError(
@@ -29,29 +32,51 @@ def get_onedrive_path(folder: str = 'project',):
     while dirname(path)[-5:].lower() != 'users':
         path = dirname(path)
         while_count += 1
-        if while_count > 20: return False
+        if while_count > 20:
+            print(f"ERROR: Could not find 'Users/' directory. Current path: {path}")
+            return None  # Explicitly return None
 
     # path is now Users/username
     onedrive_dirs = [f for f in listdir(path)
-                     if 'charit' in f.lower()]
-    # print(onedrive_dirs)
+                         if 'charit' in f.lower()]
+    if not onedrive_dirs:
+        print(f"ERROR: No OneDrive folder found in {path}. Check if 'charit' is in the folder name.")
+        return None
+
+
+    #for dir in onedrive_dirs:
+#
+    #    if not 'onedrive' in dir.lower():
+    #        dir_files = listdir(join(path, dir))
+    #        project_folder = [f for f in dir_files if f.endswith('LID_MEG')][0]
+    #        project_directory = dir
+#
+    #
+    #    else:
+    #        # print(f'Folder {dir} is skipped, check onedrive finding!!')
+    #        # TODO: possibly alternative project_folder finding
+    #        print('TODO: create altearntive onedrive finding')
+
+    if onedrive_version == "onedrive_charite":
+        match_condition = lambda d: 'onedrive' in d.lower()
+    elif onedrive_version == "charite":
+        match_condition = lambda d: 'onedrive' not in d.lower()
+    else:
+        raise ValueError("not the right onedrive_version input: has to be 'onedrive_charite' or 'charite'")
+
 
     for dir in onedrive_dirs:
-
-        if not 'onedrive' in dir.lower():
+        if match_condition(dir):
             dir_files = listdir(join(path, dir))
             project_folder = [f for f in dir_files if f.endswith('LID_MEG')][0]
             project_directory = dir
-
-        
-        else:
-            # print(f'Folder {dir} is skipped, check onedrive finding!!')
-            # TODO: possibly alternative project_folder finding
-            print('TODO: create altearntive onedrive finding')
+            break
+    else:
+        print('TODO: create altearntive onedrive finding')
             
     project_path = join(path, project_directory, project_folder)
 
-    # print(f'project folder found: {project_path}')
+    print(f'project folder found: {project_path}')
 
     
     if folder == 'project': return project_path
@@ -68,4 +93,8 @@ def get_onedrive_path(folder: str = 'project',):
 
     elif folder == 'results': return join(project_path, 'results')
 
+    elif folder == 'classification_data': return join(project_path, 'data' ,'classification_data')
+
+    elif folder == 'onset_data':
+        return join(project_path, 'data', 'onset_data')
     
