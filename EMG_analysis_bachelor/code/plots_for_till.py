@@ -9,7 +9,7 @@ import scipy as sp
 from matplotlib.lines import lineStyles
 from scipy.signal import butter, sosfiltfilt
 from scipy.stats import zscore
-from EMG_analysis_bachelor.functions_for_pipeline import get_ch_indices, plot_channel_overview, normalize_emg, notched, \
+from combined_analysis_bachelor.code.functions_for_pipeline import get_ch_indices, plot_channel_overview, normalize_emg, notched, \
     notched_and_filtered, create_df, envelope, rectify
 import matplotlib
 matplotlib.use('Qt5Agg')
@@ -36,10 +36,10 @@ location_dict = {"BIP7":"right forearm",
             "BIP12" : "right calf"}
 
 data, times = base_mini_big[custom_order_names, : ]
-# data = data * 10**6
+data = data * 1e6
 
 raw_df = create_df(data, custom_order_names, times)
-filtered_df = notched_and_filtered(raw_df, custom_order_names, ACC, EMG, times)
+filtered_df = notched_and_filtered(raw_df, ACC, EMG, [1,20], [20,450])
 
 recordings = []
 for i in range(len(onsets)):
@@ -56,6 +56,10 @@ big_moves = recordings[2]
 
 rec_dfs = [baseline, small_moves, big_moves]
 rec_dfs_names = ["rest", "small moves", "bigger moves"]
+
+plt.figure()
+plt.plot(baseline["Time (s)"], baseline["BIP7"])
+plt.show()
 
 melted_dfs = []
 for df in rec_dfs:
