@@ -33,7 +33,7 @@ locations = {"BIP7":"right M. tibialis anterior",
 sf=1000
 
 #================================= ACC Movement Detec tests - Setup A - Move1 - L ======================================
-A_move1_filtered = pd.read_hdf("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/sub-91/"
+A_move1_filtered = pd.read_hdf("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/sub_91/"
                               "PTB_01_data_processed/A_1.2_move_processed.h5", key="data")
 A_move1_filtered_df = pd.DataFrame(A_move1_filtered)
 
@@ -190,7 +190,7 @@ plt.show()
 
 
 #======================================== ACC Movement Detec tests - Setup A - move2 - L========================
-A_move2_filtered = pd.read_hdf("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/sub-91/"
+A_move2_filtered = pd.read_hdf("C:/Users/User/Documents/bachelorarbeit/data/EMG_ACC/sub_91/"
                               "PTB_01_data_processed/A_1.5_move_processed.h5", key="data")
 A_move2_filtered_df = pd.DataFrame(A_move2_filtered)
 
@@ -200,7 +200,7 @@ ACC_left_move2 = A_move2_filtered_df["BIP5"] # * -1
 ACC_left_move2_smooth = savgol_filter(ACC_left_move2, window_length=21, polyorder=3)
 
 # RMS
-window_size = 60
+window_size = 50
 ACC_left_move2_rms = np.sqrt(np.convolve(ACC_left_move2_smooth**2, np.ones(window_size)/window_size, mode='same'))
 
 # get baseline parts
