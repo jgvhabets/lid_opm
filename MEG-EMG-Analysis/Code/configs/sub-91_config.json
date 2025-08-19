@@ -1,38 +1,40 @@
 {
-  "subject_id": "sub-91",
-  "data_types": ["source_data", "raw_data", "processed_data"],
-  "setups": ["setupA", "setupB"],
-  "conditions": {
-    "setupA": ["Move1", "Move2", "MoveMockDys", "Rest", "RestMockDys"],
-    "setupB": ["Move", "MoveMockDys", "Rest", "RestMockDys"]
-  },
+  "Version-1": {
+    "subject_id": "sub-91",
+    "data_types": ["source_data", "raw_data", "processed_data"],
+    "setups": ["setupA", "setupB"],
+    "conditions": {
+      "setupA": ["Move1", "Move2", "MoveMockDys", "Rest", "RestMockDys"],
+      "setupB": ["Move", "MoveMockDys", "Rest", "RestMockDys"]
+    },
     "meg_channels": {
-    "C3": "MEG 001",
-    "C4": "MEG 002", 
-    "CZ": "MEG 003",
-    "F3": "MEG 004",
-    "F4": "MEG 005",
-    "P3": "MEG 006",
-    "P4": "MEG 007"
-  },
-  "file_structure": {
-    "source_data": {
-      "base_folder": "source_data",
-      "subfolder": "OPM_MEG",
-      "file_extension": ".fif",
-      "filename_pattern": "sub-{subject_id}_OPM-MEG_{setup}_{condition}.fif"
+      "C3": "MEG 001",
+      "C4": "MEG 002", 
+      "CZ": "MEG 003",
+      "F3": "MEG 004",
+      "F4": "MEG 005",
+      "P3": "MEG 006",
+      "P4": "MEG 007"
     },
-    "raw_data": {
-      "base_folder": "raw_data", 
-      "subfolder": "OPM_MEG",
-      "file_extension": ".fif",
-      "filename_pattern": "{subject_id}_OPM-MEG_{setup}_{condition}_raw.fif"
-    },
-    "processed_data": {
-      "base_folder": "processed_data",
-      "subfolder": "OPM_MEG", 
-      "file_extension": ".fif",
-      "filename_pattern": "sub-{subject_id}_OPM-MEG_{setup}_{condition}_processed.fif"
+    "file_structure": {
+      "source_data": {
+        "base_folder": "source_data",
+        "subfolder": "OPM_MEG",
+        "file_extension": ".fif",
+        "filename_pattern": "sub-{subject_id}_OPM-MEG_{setup}_{condition}.fif"
+      },
+      "raw_data": {
+        "base_folder": "raw_data", 
+        "subfolder": "OPM_MEG",
+        "file_extension": ".fif",
+        "filename_pattern": "{subject_id}_OPM-MEG_{setup}_{condition}_raw.fif"
+      },
+      "processed_data": {
+        "base_folder": "processed_data",
+        "subfolder": "OPM_MEG", 
+        "file_extension": ".fif",
+        "filename_pattern": "sub-{subject_id}_OPM-MEG_{setup}_{condition}_processed.fif"
+      }
     }
   }
 }

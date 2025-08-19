@@ -14,9 +14,9 @@ from mne.preprocessing import compute_proj_hfc
 from MEG_analysis_functions import apply_meg_filters
 
 
-def load_subject_config(subject_id: str, config_dir: str = '../configs') -> Dict[str, Any]:
+def load_subject_config(subject_id: str, config_dir: str = '../configs', version: str = None) -> Dict[str, Any]:
     """
-    Load configuration file for a specific subject.
+    Load configuration file for a specific subject and version.
     """
     config_file = os.path.join(config_dir, f'{subject_id}_config.json')
     
@@ -29,6 +29,20 @@ def load_subject_config(subject_id: str, config_dir: str = '../configs') -> Dict
     except json.JSONDecodeError as e:
         raise json.JSONDecodeError(f"Invalid JSON in config file {config_file}: {e}")
     
+    # If version is specified, select that version
+    if version is not None:
+        if version not in config:
+            raise KeyError(f"Version '{version}' not found in config file {config_file}")
+        config = config[version]
+    
+    return config
+
+def load_and_display_config(subject_id: str, config_dir: str = '../configs', version: str = None, verbose: bool = True) -> Dict[str, Any]:
+    """
+    Convenience function to load configuration and display available options.
+    """
+    config = load_subject_config(subject_id, config_dir, version)
+    display_available_options(config, verbose)
     return config
 
 
@@ -47,7 +61,13 @@ def display_available_options(config: Dict[str, Any], verbose: bool = True) -> N
             print(f"  {setup}: {conditions}")
 
 
-def validate_file_selection(config: Dict[str, Any], data_type: str, setup: str, condition: str) -> Tuple[str, Dict[str, str]]:
+def validate_file_selection(
+    config: Dict[str, Any],
+    data_type: str,
+    setup: str,
+    condition: str,
+    time_point: int = None
+) -> Tuple[str, Dict[str, str]]:
     """
     Validate selection and generate filename and path info.
     """
@@ -63,32 +83,40 @@ def validate_file_selection(config: Dict[str, Any], data_type: str, setup: str, 
     if condition not in config['conditions'][setup]:
         raise ValueError(f"Condition '{condition}' not found for {setup}. Available: {config['conditions'][setup]}")
     
-    # Generate filename using pattern
-    file_structure = config['file_structure'][data_type]
-    filename_pattern = file_structure['filename_pattern']
-    filename = filename_pattern.format(
-        subject_id=config['subject_id'],
-        setup=setup,
-        condition=condition
-    )
-    
-    path_info = {
-        'base_folder': file_structure['base_folder'],
-        'subfolder': file_structure['subfolder'],
-        'file_extension': file_structure['file_extension']
-    }
+    # Validate time_point if required by filename pattern
+    filename_pattern = config.get("filename_pattern")
+    if "{time}" in filename_pattern:
+        if time_point is None:
+            raise ValueError("time_point must be provided for this dataset.")
+        if time_point not in config["time_points"]:
+            raise ValueError(f"time_point '{time_point}' not found. Available: {config['time_points']}")
+        filename = filename_pattern.format(
+            setup=setup,
+            condition=condition,
+            time=time_point
+        )
+        # For sub-02, path info is just the data_path
+        path_info = {
+            'base_folder': config["data_path"]
+        }
+    else:
+        # For sub-91 and similar, use file_structure from config
+        file_structure = config['file_structure'][data_type]
+        filename_pattern = file_structure['filename_pattern']
+        filename = filename_pattern.format(
+            subject_id=config['subject_id'],
+            setup=setup,
+            condition=condition
+        )
+        path_info = {
+            'base_folder': file_structure['base_folder'],
+            'subfolder': file_structure['subfolder'],
+            'file_extension': file_structure['file_extension']
+        }
     
     return filename, path_info
 
 
-def load_and_display_config(subject_id: str, config_dir: str = '../configs', 
-                           verbose: bool = True) -> Dict[str, Any]:
-    """
-    Convenience function to load configuration and display available options.
-    """
-    config = load_subject_config(subject_id, config_dir)
-    display_available_options(config, verbose)
-    return config
 
 def preprocess_meg_data(raw, start_sfreq, target_sfreq, l_freq, h_freq, notch_freqs, hfc_components, verbose=True):
     """

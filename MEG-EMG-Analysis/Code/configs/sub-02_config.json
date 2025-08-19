@@ -1,67 +1,17 @@
 {
-  "analysis_config": {
-    "subject_id": "02",
-    "description": "Dataset from November 2024",
-    "meg_parameters": {
-      "sampling_frequency": 375,
-      "unit_conversion_factor": 1e-12,
-      "csv_header_skip": 22,
-      "csv_separator": "\t",
-      "max_channels": 20,
-      "columns_to_remove": ["Comment"]
+  "Version-1": {
+    "subject_id": "sub-02",
+    "data_types": ["source_data"],
+    "setups": ["MED", "NO_MED"],
+    "conditions": {
+      "MED": ["Move", "Rest"],
+      "NO_MED": ["Move", "Rest"]
     },
-    "channel_exclusion": {
-      "channels_to_exclude": [4, 5, 12, 16, 19],
-      "description": "Channels 5, 6, 13, 17 and 20 (0-based: 4, 5, 12, 16, 19)"
-    },
-    "filtering": {
-      "bandpass": {
-        "low_freq": 1,
-        "high_freq": 100,
-        "unit": "Hz"
-      },
-      "notch": {
-        "frequency": 50,
-        "unit": "Hz",
-        "description": "50 Hz and harmonics"
-      }
-    },
-    "time_windows": {
-      "window_1": {
-        "start": 0,
-        "end": 10,
-        "label": "0-10 s"
-      },
-      "window_2": {
-        "start": 100,
-        "end": 110,
-        "label": "100-110 s"
-      },
-      "window_3": {
-        "start": 280,
-        "end": 290,
-        "label": "280-290 s"
-      }
-    },
-    "channel_selection": {
-      "selected_channels_for_analysis": [3, 9, 19],
-      "description": "Channels for detailed visualization and analysis"
-    },
-    "file_info": {
-      "recording_identifiers": {
-        "start_recording": "rec5",
-        "last_recording": "rec7"
-      },
-      "file_patterns": {
-        "start_file": "plfp65/plfp65_rec5_13.11.2024_13-24-55_array1.lvm",
-        "last_file": "plfp65/plfp65_rec7_13.11.2024_13-42-47_array1.lvm"
-      }
-    },
-    "ica_artifacts": {
-      "X_component": 12,
-      "Y_component": 3,
-      "Z_component": 6,
-      "description": "Components to zero out (1-based indexing)"
-    }
+    "time_points": [-1, 1, 2, 3, 4, 5, 6, 7],
+    "file_format": ".lvm",
+    "meg_components": ["X", "Y", "Z"],
+    "channels_per_component": 20,
+    "filename_pattern": "sub02-{setup}-{condition}_{time}.lvm",
+    "data_path": "source_data/sub-02/plfp65"
   }
 }
