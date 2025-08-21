@@ -8,7 +8,7 @@ This branch will have all of the code relating to the EMG-data collection, EMG-A
 # Dependencies
 `conda create -n lid_opm python numpy pandas scipy scikit-learn jupyter matplotlib`
 additional packages:
-`pip install mne h5io pymatreader`
+`pip install mne h5io pymatreader pygame`
 
 package version:
 - Python sys 3.12.7

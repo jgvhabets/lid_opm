@@ -1,0 +1,15 @@
+{
+  "n_trials": 20,
+  "go_proportion": 0.7,
+  "iti_mean": 1.5,
+  "iti_jitter": 0.5,
+  "screen_width": 800,
+  "screen_height": 600,
+  "bg_color": [0, 0, 0],
+  "fixation_color": [255, 255, 255],
+  "stimulus_color": [0, 255, 0],
+  "nogo_stimulus_color": [255, 0, 0],
+  "stimulus_duration": 1.0,
+  "response_keys": ["space"],
+  "log_file": "results.csv"
+}
