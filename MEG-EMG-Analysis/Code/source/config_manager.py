@@ -85,7 +85,7 @@ def validate_file_selection(
     
     # Validate time_point if required by filename pattern
     filename_pattern = config.get("filename_pattern")
-    if "{time}" in filename_pattern:
+    if filename_pattern is not None and "{time}" in filename_pattern:
         if time_point is None:
             raise ValueError("time_point must be provided for this dataset.")
         if time_point not in config["time_points"]:
@@ -255,3 +255,46 @@ def remove_ica_artifacts(preprocessed_channels, ica_signals, ica_model, artifact
     cleaned_channels = [cleaned_data[i] for i in range(cleaned_data.shape[0])]
     
     return cleaned_channels
+
+def preview_file_header(file_path, num_lines=23):
+    """
+    Prints the first `num_lines` of the file at `file_path`.
+    """
+    if os.path.exists(file_path):
+        print(f"\nPreview of the first {num_lines} lines in file:")
+        with open(file_path, "r") as f:
+            for i in range(num_lines):
+                line = f.readline()
+                if not line:
+                    break
+                print(line.strip())
+    else:
+        print("\nSelected file does not exist!")
+        print(f"Checked path: {file_path}")
+
+
+def extract_sample_interval(file_path):
+    """
+    Extracts the sample interval (Delta_X) from the header of a LabVIEW .lvm file.
+
+    Args:
+    file_path : str
+        Path to the .lvm file.
+    Returns:
+    float
+        The sample interval (Delta_X) in seconds.
+    Raises:
+    ValueError
+        If Delta_X is not found in the file header.
+    """
+    with open(file_path, "r") as f:
+        for line in f:
+            if line.strip().startswith("Delta_X"):
+                parts = line.strip().split('\t')
+                for part in parts[1:]:
+                    try:
+                        return float(part)
+                    except ValueError:
+                        continue
+                raise ValueError("No valid Delta_X value found in line.")
+    raise ValueError("Delta_X not found in file header.")
