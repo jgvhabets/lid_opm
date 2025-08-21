@@ -1,11 +1,18 @@
 import pygame
 import json
-from experiment import run_experiment
+
+from gonogo_task.experiment import run_experiment
 
 
 def main():
+    """
+    Run Go No-Go task from command line, working directory
+    should be repo project root: lid_opm/
+
+    cmd: python -m gonogo_task.main
+    """
     # Load config
-    with open("config.json", "r") as f:
+    with open("gonogo_task/config_gonogo.json", "r") as f:
         cfg = json.load(f)
 
     # Init pygame

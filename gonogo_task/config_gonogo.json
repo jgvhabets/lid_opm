@@ -1,7 +1,9 @@
 {
-  "n_trials": 20,
-  "go_proportion": 0.7,
-  "iti_mean": 1.5,
+  "n_trials": 100,
+  "go_proportion": 0.4,
+  "nogo_proportion": 0.3,
+  "abort_proportion": 0.3,
+  "iti_mean": 1.0,
   "iti_jitter": 0.5,
   "screen_width": 800,
   "screen_height": 600,
@@ -9,7 +11,10 @@
   "fixation_color": [255, 255, 255],
   "stimulus_color": [0, 255, 0],
   "nogo_stimulus_color": [255, 0, 0],
-  "stimulus_duration": 1.0,
+  "stimulus_duration": 2.0,
+  "abort_go_duration": 0.5,
+  "abort_step_size": 0.05,
   "response_keys": ["space"],
-  "log_file": "results.csv"
+  "log_file": "results.csv",
+  "experiment_duration": 120
 }
