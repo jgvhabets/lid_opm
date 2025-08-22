@@ -10,6 +10,16 @@ from utils.lsl_stream import send_marker
 
 def run_trial(screen, trial_type, cfg, clock, outlet=None,
               abort_go_duration=None,):
+    """
+    
+    Abort trials: depending on successful or unsuccessful
+        inhibition of preceding Go-Signal, the Abort-Signal
+        is increased or decreased with X seconds (given as
+        a parameter in the config, defaults 0.05 s; and the 
+        Abort-Signal interval defaults to 250 ms; acc. to Cao 2024).
+        
+    
+    """
     response = None
     rt = None
 
@@ -27,10 +37,14 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     stim_onset = time.time()
     responded = False
 
+
     if trial_type == "go":
         # Show green circle for entire duration
         screen.fill(cfg["bg_color"])
-        draw_go_stimulus(screen, cfg["stimulus_color"], cfg["screen_width"], cfg["screen_height"])
+
+        direction = draw_go_stimulus(screen, cfg["stimulus_color"],
+                                 cfg["screen_width"], cfg["screen_height"],
+                                 cfg["arrow_size"])
         pygame.display.flip()
         send_marker(outlet, f"STIM_ONSET_go")
 
@@ -42,7 +56,9 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     elif trial_type == "nogo":
         # Show red square for entire duration
         screen.fill(cfg["bg_color"])
-        draw_nogo_stimulus(screen, cfg["nogo_stimulus_color"], cfg["screen_width"], cfg["screen_height"])
+        direction = draw_nogo_stimulus(screen, cfg["nogo_stimulus_color"],
+                                   cfg["screen_width"], cfg["screen_height"],
+                                   cfg["arrow_size"])
         pygame.display.flip()
         send_marker(outlet, f"STIM_ONSET_nogo")
 
@@ -54,7 +70,9 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     elif trial_type == "abort":
         # Phase 1: green go (abort_go_duration)
         screen.fill(cfg["bg_color"])
-        draw_go_stimulus(screen, cfg["stimulus_color"], cfg["screen_width"], cfg["screen_height"])
+        direction = draw_go_stimulus(screen, cfg["stimulus_color"],
+                                 cfg["screen_width"], cfg["screen_height"],
+                                 cfg["arrow_size"])
         pygame.display.flip()
         send_marker(outlet, f"STIM_ONSET_abort_go")
 
@@ -64,7 +82,9 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
 
         # Phase 2: switch to red nogo
         screen.fill(cfg["bg_color"])
-        draw_nogo_stimulus(screen, cfg["nogo_stimulus_color"], cfg["screen_width"], cfg["screen_height"])
+        draw_nogo_stimulus(screen, cfg["nogo_stimulus_color"],
+                       cfg["screen_width"], cfg["screen_height"],
+                       cfg["arrow_size"], direction=direction)
         pygame.display.flip()
         send_marker(outlet, f"STIM_ONSET_abort_nogo")
 
@@ -78,10 +98,13 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     draw_fixation(screen, cfg["fixation_color"], cfg["screen_width"], cfg["screen_height"])
     pygame.display.flip()
 
+    
     return {
         "trial_type": trial_type,
+        "direction": direction,
         "response": response,
         "rt": rt,
+        "abort_go_duration": abort_go_duration if trial_type == "abort" else None,
         "correct": (
             (trial_type == "go" and response == "pressed") or
             (trial_type == "nogo" and response is None) or

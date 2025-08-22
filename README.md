@@ -15,3 +15,7 @@ package version:
 - Python sys 3.12.7
 - numpy 1.26.4
 - mne 1.8.0
+
+
+### Go/ No-Go Task
+Inspired by methods used by Cao et al. Neurobiol of Dis 2024, https://doi.org/10.1016/j.nbd.2024.106689; Kühn et al. Brain 2004, DOI: 10.1093/brain/awh106; and Alegre et al. Exp Neurol 2013, https://doi.org/10.1016/j.expneurol.2012.08.027.
