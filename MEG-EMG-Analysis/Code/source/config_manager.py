@@ -298,3 +298,20 @@ def extract_sample_interval(file_path):
                         continue
                 raise ValueError("No valid Delta_X value found in line.")
     raise ValueError("Delta_X not found in file header.")
+
+def create_time_window_mask(time_array, start_time, window_duration):
+    """
+    Create a boolean mask and time window for a given time array.
+
+    Parameters:
+        time_array (np.ndarray): Array of time points.
+        start_time (float): Start time of the window (in seconds).
+        window_duration (float): Duration of the window (in seconds).
+
+    Returns:
+        mask (np.ndarray): Boolean mask for the time window.
+        time_window (np.ndarray): Time points within the window.
+    """
+    mask = (time_array >= start_time) & (time_array <= start_time + window_duration)
+    time_window = time_array[mask]
+    return mask, time_window
