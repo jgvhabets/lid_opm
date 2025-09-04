@@ -5,8 +5,8 @@ import mne
 import os
 import importlib
 import matplotlib.pyplot as plt
-from utils.get_sub_dir import get_sub_folder_dir
-import utils.find_paths as find_paths
+from my_utils.get_sub_dir import get_sub_folder_dir
+import my_utils.find_paths as find_paths
 from matplotlib.widgets import Slider
 from combined_analysis_bachelor.code.read_in_emg_acc import show_processed_data, read_in_h5
 from combined_analysis_bachelor.code.functions_for_pipeline import tkeo, rectify, envelope, savgol, root_mean_square, \
