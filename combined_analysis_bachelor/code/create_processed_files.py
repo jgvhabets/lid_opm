@@ -5,8 +5,8 @@ import os
 from scipy.signal import butter, sosfiltfilt
 from combined_analysis_bachelor.code.functions_for_pipeline import add_tkeo_add_envelope, \
     filtered_and_notched
-from utils.find_paths import get_onedrive_path
-from utils.get_sub_dir import get_sub_folder_dir
+from my_utils.find_paths import get_onedrive_path
+from my_utils.get_sub_dir import get_sub_folder_dir
 
 
 
@@ -40,23 +40,32 @@ def create_processed_files(source_directory, target_directory,
         raw_df = pd.DataFrame(raw) # make sure its a df, not an object
         print(raw_df.columns)
 
-        # --- create euclidean norm column per side --- #
-        #svm_left = np.sqrt(raw_df["acc_x_hand_L"]**2 + raw_df["acc_y_hand_L"]**2 +  raw_df["acc_z_hand_L"]**2)
-        #svm_right = np.sqrt(raw_df["acc_x_leg_L"]**2 + raw_df["acc_y_leg_L"]**2 +  raw_df["acc_z_leg_L"]**2)
-        svm_right = np.sqrt(raw_df["acc_x_hand_R"] ** 2 + raw_df["acc_y_hand_R"] ** 2 + raw_df["acc_z_hand_R"] ** 2)
-        #raw_df["SVM_L"] = svm_left
-        #raw_df["SVM_leg_L"] = svm_right
-        raw_df["SVM_R"] = svm_right
-
-
-        # ----- perform filtering ----- #
+        # ----- get col names ----- #
         emg_cols = raw_df.columns[raw_df.columns.str.contains('brachioradialis|deltoideus|tibialis',
                                                                                case=False, regex=True)].tolist()
-        acc_cols = raw_df.columns[raw_df.columns.str.contains("SVM|hand",
-                                                             case=False, regex=True)].tolist() # zurück ändern??
+        acc_cols = raw_df.columns[raw_df.columns.str.contains("leg|hand",
+                                                             case=False, regex=True)].tolist()
 
-        #raw_df = raw_df.drop(["acc_x_hand_R", "acc_y_hand_R", "acc_z_hand_R"], axis=1) # , "acc_x_leg_L", "acc_y_leg_L", "acc_z_leg_L"]) # zurück ändern?
+        # ----- filter data ----- #
         filtered_df = filtered_and_notched(raw_df, acc_cols, emg_cols, acc_filter_parameters, emg_filter_parameters, sf)
+
+        # --- create euclidean norm column per side --- #
+        svm_left_hand = np.sqrt((filtered_df["acc_x_hand_L"] **2) + (filtered_df["acc_y_hand_L"] **2) +  (filtered_df["acc_z_hand_L"] **2))
+        svm_left_leg = np.sqrt((filtered_df["acc_x_leg_L"] **2) + (filtered_df["acc_y_leg_L"] **2) +  (filtered_df["acc_z_leg_L"] **2))
+        svm_right_hand = np.sqrt((filtered_df["acc_x_hand_R"] ** 2) + (filtered_df["acc_y_hand_R"] ** 2) + (filtered_df["acc_z_hand_R"] ** 2))
+        svm_right_leg = np.sqrt((filtered_df["acc_x_leg_R"] **2) + (filtered_df["acc_y_leg_R"] **2) +  (filtered_df["acc_z_leg_R"] **2))
+
+        #filtered_df["SVM_L"] = svm_left
+        #filtered_df["SVM_R"] = svm_right
+        filtered_df["SVM_hand_L"] = svm_left_hand
+        filtered_df["SVM_leg_L"] = svm_left_leg
+        filtered_df["SVM_hand_R"] = svm_right_hand
+        filtered_df["SVM_leg_R"] = svm_right_leg
+
+
+        filtered_df = filtered_df.drop(["acc_x_hand_L", "acc_y_hand_L", "acc_z_hand_L", "acc_x_hand_R",
+                                        "acc_y_hand_R", "acc_z_hand_R", "acc_x_leg_L, acc_y_leg_L, acc_z_leg_L",
+                                        "acc_x_leg_R", "acc_y_leg_R", "acc_z_leg_R"], axis=1)
 
 
         # ----- creating new file ----- #
@@ -74,5 +83,3 @@ def create_processed_files(source_directory, target_directory,
         filtered_df.to_hdf(target_filepath, key="data", mode="w")
 
     print("\n✅ Every File processed and saved!")
-
-#create_processed_files(source_dir, target_dir, [1,20], [20,450], 1000)
