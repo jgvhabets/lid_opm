@@ -9,6 +9,13 @@ import matplotlib.pyplot as plt
 
 test = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data/Accelerometer/"
                            "Test_Accelerometer_2025-04-22_14-22-47.cnt", preload=True)
+
+from my_utils import find_paths as find_path
+## save for thesis! ##
+fig_path = find_path.get_onedrive_path(folder="figures")
+saving_path = f"{fig_path}/mix_EMG_ACC_figures/ACC_compare.svg"
+
+
 full_array = test.get_data()
 
 # taking only first 6 channels = ACC channels
@@ -16,7 +23,7 @@ ACC_array = full_array[0:6]
 
 # notch filter and high-pass filtering
 ACC_array = mne.filter.notch_filter(x=ACC_array[0:6], freqs=[50,100,150], Fs=1000)
-low_filtered = mne.filter.filter_data(ACC_array, sfreq=1000, l_freq=1, h_freq=25)
+low_filtered = mne.filter.filter_data(ACC_array, sfreq=1000, l_freq=2, h_freq=20)
 low_filtered[5] *= -1
 
 x_cha = low_filtered[5]
@@ -43,15 +50,21 @@ print(f"Similarity for Euclidean norm signals: {corr_norm:.2f}")
 ncc = correlate(low_filtered[5], low_filtered[2], mode='same', method='fft') / (np.linalg.norm(low_filtered[5]) * np.linalg.norm(low_filtered[2]))
 lags = np.arange(-len(low_filtered[5])+1, len(low_filtered[2]))
 
-plt.figure()
-plt.plot(lags, correlate(low_filtered[5], low_filtered[5], mode='full'), label='Auto-corr: ACC-charite vs ACC-charite')
-plt.plot(lags, correlate(low_filtered[5], low_filtered[2], mode='full'), label='Cross-corr: ACC-charite vs ACC-AntNeuro')
+fig, ax = plt.subplots(1,1,figsize=(12,6))
+plt.plot(lags, correlate(low_filtered[5], low_filtered[5], mode='full'), color="darkgray", linewidth=2, label='Auto-corr: ACC-ANTNeuro vs ACC-ANTNeuro')
+plt.plot(lags, correlate(low_filtered[5], low_filtered[2], mode='full'), color="red", alpha=0.7, linewidth=0.9, label='Cross-corr: ACC-charite vs ACC-AntNeuro')
 # plt.axvline(x=0, color='k', linestyle='--')
 #plt.title("Cross-correlate ≈ Auto-correlate")
 #plt.xlabel("lags")
 #plt.ylabel("correlate")
-#plt.legend()
-#plt.savefig("Auto-Corr_Cross-corr.svg")
+plt.xlim(-12000, 12000)
+ax.set_xticklabels([])
+ax.set_yticklabels([])
+for side in (["left", "right", "top", "bottom"]):
+    sp = ax.spines[side]
+    sp.set_linewidth(0.5)
+plt.legend(frameon=False)
+plt.savefig(saving_path, dpi=300)
 plt.show()
 
 
@@ -97,7 +110,7 @@ lags = np.arange(-len(norm_ant) + 1, len(norm_ant))
 
 # --------------------------
 # plot
-plt.figure(figsize=(10, 5))
+plt.figure(figsize=(12, 5))
 plt.plot(lags, auto_corr, label='Auto-Corr: Ant vs Ant')
 plt.plot(lags, cross_corr, label='Cross-Corr: Charité vs Ant')
 plt.title('Normalisierte Auto- und Cross-Korrelation')
