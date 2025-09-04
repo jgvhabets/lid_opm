@@ -9,7 +9,7 @@ from scipy.signal import butter, sosfiltfilt
 from scipy.stats import zscore
 from combined_analysis_bachelor.code.functions_for_pipeline import get_ch_indices, plot_channel_overview, normalize_emg, \
     notched_and_filtered, create_df, envelope, rectify, tkeo, filtered_and_notched
-from utils.get_sub_dir import get_sub_folder_dir
+from my_utils.get_sub_dir import get_sub_folder_dir
 from read_in_emg_acc import read_in_h5
 import matplotlib
 matplotlib.use('Qt5Agg')
