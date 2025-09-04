@@ -68,7 +68,7 @@ def extract_con_data(file):
 
     # Apply filters only to EEG channels
     eeg_picks = mne.pick_types(raw.info, meg=False, eeg=True, stim=False, eog=False, misc=False)
-    raw_filtered.filter(l_freq=25, h_freq=248, picks=eeg_picks)
+    raw_filtered.filter(l_freq=20, h_freq=450, picks=eeg_picks)
 
     # Extract EMG data (bipolar) with filtering
     emg_data = {}
@@ -78,15 +78,15 @@ def extract_con_data(file):
 
             ch1 = raw.get_data(picks=[channels[0]])[0]
             ch2 = raw.get_data(picks=[channels[1]])[0]
-            ch1_filtered = apply_filter(ch1, raw.info['sfreq'], 10, 249)
-            ch2_filtered = apply_filter(ch2, raw.info['sfreq'], 10, 249)
+            ch1_filtered = apply_filter(ch1, raw.info['sfreq'], 20, 450)
+            ch2_filtered = apply_filter(ch2, raw.info['sfreq'], 20, 450)
             emg_data[location] = ch1_filtered - ch2_filtered
 
 
         else:
 
             data = raw.get_data(picks=[channels])[0]
-            emg_data[location] = apply_filter(data, raw.info['sfreq'], 10, 249)
+            emg_data[location] = apply_filter(data, raw.info['sfreq'], 20, 450)
 
 
     # Extract and filter ACC data
@@ -95,7 +95,7 @@ def extract_con_data(file):
 
         data = raw.get_data(picks=[channel])[0]
 
-        acc_data[axis] = apply_filter(data, raw.info['sfreq'], 2, 48)
+        acc_data[axis] = apply_filter(data, raw.info['sfreq'], 2, 20)
 
     for location in emg_data:
         emg_data[location] *= 1000

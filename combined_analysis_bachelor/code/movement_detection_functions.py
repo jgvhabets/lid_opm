@@ -17,7 +17,7 @@ from matplotlib.colors import ListedColormap
 import combined_analysis_bachelor.code.functions_for_pipeline as funcs
 
 
-## removing off and onsets that are too close together (splitting one arm raise)
+## removing off and onsets that are too close together (splitting one arm raise) ##
 def basic_take_out_short_off_onset(onsets, offsets, min_time_period, sampling_freq):
     onsets_clean = onsets.copy()
     offsets_clean = offsets.copy()
@@ -36,7 +36,7 @@ def basic_take_out_short_off_onset(onsets, offsets, min_time_period, sampling_fr
 
     return onsets_clean, offsets_clean
 
-def take_out_short_off_onset(onsets, offsets, min_time_period, sampling_freq):
+def take_out_short_off_onset(onsets, offsets, min_time_period, sampling_freq): ## weiter ausgebaute funktion von der darüber##
     """
     Entfernt kurze Pausen zwischen Aktivitätsblöcken.
     Wenn der Abstand zwischen offset[i] und onset[i+1] <= min_time_period ist,
@@ -86,7 +86,7 @@ def take_out_short_off_onset(onsets, offsets, min_time_period, sampling_freq):
 
 # get array of final on- and onsets pairs #
 def new_on_offsets(new_onsets, new_offsets, end_index=None):
-    """Paare aus On- und Offsets bilden, fehlende ergänzen oder abschneiden."""
+    """builds pairs from new on and offsets (after taking out too short activations for example)."""
     onsets_and_offsets = []
     n_on = len(new_onsets)
     n_off = len(new_offsets)
@@ -104,7 +104,8 @@ def new_on_offsets(new_onsets, new_offsets, end_index=None):
 
 ## create binary array ##
 def fill_activity_mask(on_and_offsets, sampling_freq, time_column):
-    """takes in final on- and offsets and creates binary array where the periods between on- and offset are set to True. Time points outside of these periods are False
+    """takes in final on- and offsets and creates binary array where the periods between on- and offset are set to True.
+     Time points outside of these periods are False
     args
     on_and_offsets: list that holds pairs of on- and onsets
     sampling_freq: sampling frequency
@@ -123,7 +124,7 @@ def fill_activity_mask(on_and_offsets, sampling_freq, time_column):
     return mask
 
 
-def create_behavioral_array_leg(tibialis_activities_binary, acc_activities_binary):
+def create_behavioral_array_leg(tibialis_activities_binary, acc_activities_binary): ## first function I wrote#
     """compares the EMG and ACC binary arrays and outputs
     a number for each detected activity state"""
     behavioral_list = []
@@ -141,7 +142,7 @@ def create_behavioral_array_leg(tibialis_activities_binary, acc_activities_binar
     return behavioral_array
 
 
-def create_behavioral_array_arm(delt_activities_binary, brachioradialis_activities_binary, acc_activities_binary):
+def create_behavioral_array_arm(delt_activities_binary, brachioradialis_activities_binary, acc_activities_binary): # function for the arm, as we have 2 emg & 1 acc
     behavioral_list = []
     for i, active in enumerate(acc_activities_binary):
         if active == False and delt_activities_binary[i] == False and brachioradialis_activities_binary[i] == False:
@@ -618,7 +619,7 @@ def build_behavior_json(
 
 # ============================== machine learning part ===================================#
 
-# --- splitting classification data --- #
+# --- splitting classification data --- # --> I used this for splitting the ML recordings since they were recorded in one Go
 def split_recording_by_manual_segments(
         filepath: str,
         output_dir: str,
@@ -709,7 +710,7 @@ def create_train_df(filepaths, window_size, overlap_value, sf, output_dir):
 
         # --- getting col names ---#
         EMG_cols = [col for col in df.columns if any(m in col for m in emg_muscles)]
-        ACC_cols = ["SVM"]
+        ACC_cols = ["SVM"] # this is without "L" or "R" since there was only one ACC per sub
 
         # --- calculating envelope & tkeo and adding them to df and also smoothing acc data ---#
         df = funcs.add_tkeo_add_envelope(df, EMG_cols, 20, 3, 1000)
@@ -1059,7 +1060,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score, confusion_matrix
 
-def fit_model_acc_sens_spec(loso_data, model_name, ):
+def fit_model_acc_sens_spec(loso_data, model_name, ): # Function I used for getting accuracy, sens., specificity
     """
     trains model and outputs mean accuracy, mean sensitivity and mean specifity for the LOSO
     folds
@@ -1231,7 +1232,7 @@ def plot_cm(model_name, folds_data, sub_id, output_dir, save=False):
 from sklearn.preprocessing import label_binarize
 from sklearn.metrics import roc_curve, auc
 
-def plot_loso_roc(loso_data, model_name, class_names, mode='one-vs-all'):
+def plot_loso_roc(loso_data, model_name, class_names, mode='one-vs-all'): # ROC plots, not used for thesis
     """
     mode: 'one-vs-all' → 3 curves (one for each class)
           'macro'       → an averaged ROC for all classes
@@ -1440,27 +1441,10 @@ def create_test_df(df, output_dir, behavioral_array,
     return df_final, label_rows, label_coding
 
 
-# schonmal funktion für die kontinuierlichen daten!
-def detect_onsets(predictions, target_class='movement'):
-    onsets = []
-    for i in range(1, len(predictions)):
-        if predictions[i-1] != target_class and predictions[i] == target_class:
-            onsets.append(i)
-    return onsets
 
 
 
-
-
-
-
-
-
-
-
-
-
-
+# followingly are functions that i used for interactive threshold-based movement detection (GUI based)
 
 ##### ================================== GUI MOVEMENT DETECTION FUNCTIONS =========================================#####
 from matplotlib.widgets import Slider
