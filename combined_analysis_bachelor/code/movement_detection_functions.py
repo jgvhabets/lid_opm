@@ -17,12 +17,8 @@ from matplotlib.colors import ListedColormap
 import combined_analysis_bachelor.code.functions_for_pipeline as funcs
 
 
-# 3. movement detection itself (choosing method?, threshold param, activity length param -> output = on/offsets
- # --> for EMG and ACC seperated or together always?
-
-
 ## removing off and onsets that are too close together (splitting one arm raise)
-def old_take_out_short_off_onset(onsets, offsets, min_time_period, sampling_freq):
+def basic_take_out_short_off_onset(onsets, offsets, min_time_period, sampling_freq):
     onsets_clean = onsets.copy()
     offsets_clean = offsets.copy()
     min_sample_period = min_time_period * sampling_freq
@@ -31,8 +27,8 @@ def old_take_out_short_off_onset(onsets, offsets, min_time_period, sampling_freq
         onsets_clean = onsets.tolist()
         offsets_clean = offsets.tolist()
 
-    # Iterate in reverse to safely delete items
-    for i in range(len(offsets) - 2, -1, -1):  # Start from the end
+    # iterates in reverse to safely delete items
+    for i in range(len(offsets) - 2, -1, -1):  # start from the end
         time_between = onsets[i + 1] - offsets[i]
         if time_between <= min_sample_period:
             del onsets_clean[i + 1]
@@ -121,15 +117,17 @@ def fill_activity_mask(on_and_offsets, sampling_freq, time_column):
     for onset, offset in on_and_offsets:
         start = int(round(onset))
         end = int(round(offset))
-        mask[max(0, start):min(len(mask), end + 1)] = True # sicher, dass hier end+1 hin muss?
+        if end < start:
+            continue
+        mask[max(0, start):min(len(mask), end + 1)] = True
     return mask
 
 
-def create_behavioral_array(emg_activities_binary, acc_activities_binary):
+def create_behavioral_array_leg(tibialis_activities_binary, acc_activities_binary):
     """compares the EMG and ACC binary arrays and outputs
     a number for each detected activity state"""
     behavioral_list = []
-    for i, active in enumerate(emg_activities_binary):
+    for i, active in enumerate(tibialis_activities_binary):
         if active == False and acc_activities_binary[i] == False:
             behavioral_list.append(0) # = rest
         elif active == True and acc_activities_binary[i] == True:
@@ -137,39 +135,481 @@ def create_behavioral_array(emg_activities_binary, acc_activities_binary):
         elif active == True and acc_activities_binary[i] == False:
             behavioral_list.append(2) # = suppression
         elif active == False and acc_activities_binary[i] == True:
-            behavioral_list.append(1) # = gets also labelled as move for now
+            behavioral_list.append(1) # = move
     behavioral_array = np.array(behavioral_list)
 
     return behavioral_array
 
 
 def create_behavioral_array_arm(delt_activities_binary, brachioradialis_activities_binary, acc_activities_binary):
-    behavioral = []
+    behavioral_list = []
     for i, active in enumerate(acc_activities_binary):
         if active == False and delt_activities_binary[i] == False and brachioradialis_activities_binary[i] == False:
-            behavioral.append(0) # = rest
+            behavioral_list.append(0) # = rest
         elif active == True and delt_activities_binary[i] == True and brachioradialis_activities_binary[i] == True:
-            behavioral.append(1) # options for move
+            behavioral_list.append(1) # options for move
         elif active == True and delt_activities_binary[i] == True and brachioradialis_activities_binary[i] == False:
-            behavioral.append(1)
+            behavioral_list.append(1)
         elif active == True and delt_activities_binary[i] == False and brachioradialis_activities_binary[i] == True:
-            behavioral.append(1)
+            behavioral_list.append(1)
+        elif active == True and delt_activities_binary[i] == False and brachioradialis_activities_binary[i] == False:
+            behavioral_list.append(1)
         elif active == False and delt_activities_binary[i] == True and brachioradialis_activities_binary[i] == True:
-            behavioral.append(2) # options for suppression
+            behavioral_list.append(2) # options for suppression
         elif active == False and delt_activities_binary[i] == True and brachioradialis_activities_binary[i] == False:
-            behavioral.append(2)
+            behavioral_list.append(2)
         elif active == False and delt_activities_binary[i] == False and brachioradialis_activities_binary[i] == True:
-            behavioral.append(2)
+            behavioral_list.append(2)
 
-    behavioral_array = np.array(behavioral)
+    behavioral_array = np.array(behavioral_list)
     return behavioral_array
 
+def threshold_to_pairs(signal, threshold):
+    x = np.asarray(signal)
+    active = x >= threshold
+    edges = np.diff(active.astype(int), prepend=0)
+    onsets = np.where(edges == 1)[0]
+    offsets = np.where(edges == -1)[0] - 1
+    if active[-1]:
+        offsets = np.append(offsets, len(active) - 1)
+    if len(onsets) and (len(offsets) == 0 or onsets[0] > offsets[0]):
+        onsets = np.insert(onsets, 0, 0)
+    return onsets.astype(int).tolist(), offsets.astype(int).tolist()
+
+def filter_pairs_min_length(onsets, offsets, min_len_samples):
+    kept_on, kept_off = [], []
+    for on, off in zip(onsets, offsets):
+        if (off - on + 1) >= min_len_samples:
+            kept_on.append(on)
+            kept_off.append(off)
+    return kept_on, kept_off
+
+def pairs_to_list(onsets, offsets):
+    return [(int(o), int(f)) for o, f in zip(onsets, offsets)]
+
+def zeros_bool_like(n):
+    return np.zeros(n, dtype=bool)
+
+import os
+import json
+import re
+import numpy as np
+import pandas as pd
+
+# ── Helfer aus deinem Code + kleine Utilities ──
+
+def _find_column(df, name):
+    if name in df.columns:
+        return name
+    for c in df.columns:
+        if c.lower() == name.lower():
+            return c
+    # optional: heuristik
+    for c in df.columns:
+        cl = c.lower()
+        if "sync" in cl and "time" in cl:
+            return c
+    return None
+
+def _new_get_baseline_segment_by_key(df, baseline_dict, baseline_key, sampling_freq):
+    """
+    baseline_key: e.g. "arm_L_setupA_Move1", "arm_R_setupA_Rest", ...
+    - Case-insensitive Lookup (arm_L_SetupA_Move1 == arm_L_setupA_Move1)
+    - Fallback: first 5 seconds.
+    Returns: (slice(i0,i1), times, matched_key or None)
+    """
+    t_col = _find_column(df, "Sync_Time (s)")
+    if t_col is None:
+        times = np.arange(len(df)) / float(sampling_freq)
+    else:
+        times = df[t_col].to_numpy()
+
+    matched_key = None
+    if baseline_dict:
+        if baseline_key in baseline_dict:
+            matched_key = baseline_key
+        else:
+            lower_map = {k.lower(): k for k in baseline_dict.keys()}
+            mk = lower_map.get(baseline_key.lower())
+            if mk is not None:
+                matched_key = mk
+
+    if matched_key is not None:
+        bstart, bend = baseline_dict[matched_key]
+    else:
+        bstart, bend = 0.0, min(5.0, float(times[-1]) if len(times) else 5.0)
+
+    i0 = int(np.searchsorted(times, bstart))
+    i1 = int(np.searchsorted(times, bend))
+    i1 = max(i1, i0 + 1)
+    return slice(i0, i1), times, matched_key
+
+
+def add_tkeo(df, emg_columns, window_size):
+    added_to_df = df.copy()
+    for col in emg_columns:
+        if col not in df.columns:
+            raise ValueError(f"EMG-Kanal '{col}' fehlt im DataFrame.")
+        col_data = df[col].to_numpy()
+        if len(col_data) < 3:
+            raise ValueError(f"Spalte {col} hat zu wenige Samples für TKEO.")
+        tkeo_col = col_data[1:-1] ** 2 - col_data[0:-2] * col_data[2:]
+        tkeo_padded = np.pad(tkeo_col, (1, 1), 'edge')
+        tkeo_rectified = np.abs(tkeo_padded)
+        kernel = np.ones(window_size) / max(1, window_size)
+        tkeo_smoothed = np.sqrt(np.convolve(tkeo_rectified ** 2, kernel, mode='same'))
+        added_to_df[f"{col}_tkeo"] = tkeo_smoothed
+    return added_to_df
+
+# def old_take_out_short_off_onset(onsets, offsets, min_time_period, sampling_freq):
+#     onsets_clean = onsets.tolist() if hasattr(onsets, 'tolist') else onsets.copy()
+#     offsets_clean = offsets.tolist() if hasattr(offsets, 'tolist') else offsets.copy()
+#     min_sample_period = int(round(min_time_period * sampling_freq))
+#
+#     for i in range(len(offsets_clean) - 2, -1, -1):
+#         time_between = onsets_clean[i + 1] - offsets_clean[i]
+#         if time_between <= min_sample_period:
+#             del onsets_clean[i + 1]
+#             del offsets_clean[i]
+#     return onsets_clean, offsets_clean
+
+# def fill_activity_mask(on_and_offsets, sampling_freq, time_array):
+#     n = len(time_array)
+#     mask = np.zeros(n, dtype=bool)
+#     for onset, offset in on_and_offsets:
+#         start = int(round(onset))
+#         end = int(round(offset))
+#         if end < start:
+#             continue
+#         mask[max(0, start):min(n, end + 1)] = True
+#     return mask
+
+def read_h5_as_df(path):
+    with pd.HDFStore(path, mode='r') as store:
+        keys = store.keys()
+        if not keys:
+            raise ValueError("H5-Datei enthält keine DataFrames.")
+        key = keys[0]
+    return pd.read_hdf(path, key=key)
+
+def threshold_to_pairs(signal, threshold):
+    x = np.asarray(signal)
+    active = x >= threshold
+    edges = np.diff(active.astype(int), prepend=0)
+    onsets = np.where(edges == 1)[0]
+    offsets = np.where(edges == -1)[0] - 1
+    if active[-1]:
+        offsets = np.append(offsets, len(active) - 1)
+    if len(onsets) and (len(offsets) == 0 or onsets[0] > offsets[0]):
+        onsets = np.insert(onsets, 0, 0)
+    return onsets.astype(int).tolist(), offsets.astype(int).tolist()
+
+def filter_pairs_min_length(onsets, offsets, min_len_samples):
+    kept_on, kept_off = [], []
+    for on, off in zip(onsets, offsets):
+        if (off - on + 1) >= min_len_samples:
+            kept_on.append(on)
+            kept_off.append(off)
+    return kept_on, kept_off
+
+def pairs_to_list(onsets, offsets):
+    return [(int(o), int(f)) for o, f in zip(onsets, offsets)]
+
+def zeros_bool_like(n): return np.zeros(n, dtype=bool)
+
+# ── Parsing-Helfer für Baseline-Key ──
+
+def _limb_to_baseline_keypart(limb_name):
+    """wandelt 'armL' → 'arm_L', 'armR' → 'arm_R', 'legL' → 'leg_L'"""
+    ln = limb_name.lower()
+    if ln.startswith("arm"):
+        side = "L" if "l" in ln else ("R" if "r" in ln else "")
+        return f"arm_{side}" if side else "arm"
+    if ln.startswith("leg"):
+        side = "L" if "l" in ln else ("R" if "r" in ln else "")
+        return f"leg_{side}" if side else "leg"
+    return limb_name  # Fallback
+
+def _extract_setup_and_condition(fname_noext):
+    low = fname_noext.lower()
+    setup = "SetupA" if "setupa" in low else ("SetupB" if "setupb" in low else None)
+
+    # Condition priorisieren: ...mockdys vor move/rest, dann move1/move2
+    if "movemockdys" in low or ("mockdys" in low and "move" in low):
+        cond = "MoveMockDys"
+    elif "restmockdys" in low or ("mockdys" in low and "rest" in low):
+        cond = "RestMockDys"
+    elif "move1" in low:
+        cond = "Move1"
+    elif "move2" in low:
+        cond = "Move2"
+    elif "move" in low:
+        cond = "Move"
+    elif "rest" in low:
+        cond = "Rest"
+    else:
+        cond = "Rest"  # konservativer Default
+
+    # setupA hat Move1/Move2; setupB hat 'Move'
+    if setup == "SetupA" and cond == "Move":
+        cond = "Move1"  # Default, falls nur "move" im Namen steht
+    if setup == "SetupB" and cond in ("Move1", "Move2"):
+        cond = "Move"
+
+    return setup, cond
+
+# ── Hauptfunktion: dynamische Schwellen aus Baselines ──
+
+def build_behavior_json(
+    recording_paths,
+    limbs_config,
+    thresholds_by_channel,
+    baselines,
+    sampling_freq,
+    min_activity_secs,
+    min_pause_secs,
+    *,
+    debug=False,
+    debug_channels=None,
+    debug_log_path=None,
+    tkeo_window=20,
+    time_column="Sync_Time",
+    output_behavioral_labels_path,
+    output_events_path,
+    output_thresholds_path
+):
+    """
+    thresholds_by_channel: z.B. {"deltoideus_L_tkeo": 6.0, "SVM_L": 3.0, ...}  # <- k-Werte!
+    baselines: dict mit Keys wie "arm_L_setupA_Move1": [t0, t1], ...
+    """
+    import json, sys
+
+    def _dbg(payload):
+        if not debug:
+            return
+        try:
+            with open(debug_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        except Exception as e:
+            print("[DEBUG-LOG-ERR]", e, file=sys.stderr)
 
 
 
+    result = {}
+    events_result = {}
+    thresholds_result = {}
+
+    for rec_path in recording_paths:
+        rec_path = str(rec_path)
+        fname = os.path.basename(rec_path)
+        name_noext = os.path.splitext(fname)[0]
+
+        setup_key, cond = _extract_setup_and_condition(name_noext)
+        if setup_key is None:
+            raise ValueError(f"Dateiname {fname} enthält weder 'SetupA' noch 'SetupB'.")
+
+        if setup_key not in limbs_config:
+            raise ValueError(f"'{setup_key}' fehlt in limbs_config.")
+
+        df = pd.DataFrame(pd.read_hdf(rec_path, key="data"))
+
+        min_len_samples = int(round(min_activity_secs * sampling_freq))
+
+        # Zeitarray für Masken (nutzt time_column, sonst 'Sync_Time (s)', sonst arange/fs)
+        if time_column in df.columns:
+            time_array = df[time_column].to_numpy()
+        else:
+            # versuche 'Sync_Time (s)' aus deiner Baseline-Funktion; sonst fallback
+            t_col = _find_column(df, "Sync_Time (s)")
+            if t_col is not None:
+                time_array = df[t_col].to_numpy()
+            else:
+                time_array = np.arange(len(df)) / float(sampling_freq)
+
+        _dbg({
+            "file": name_noext,
+            "note": "time_array_check",
+            "len": int(len(time_array)),
+            "t0": float(time_array[0]) if len(time_array) else None,
+            "t1": float(time_array[-1]) if len(time_array) else None,
+            "dt_median": float(np.median(np.diff(time_array))) if len(time_array) > 2 else None,
+            "fs_param": float(sampling_freq)
+        })
+
+        # Roh-EMG nur aus limbs_config ziehen und TKEO erzeugen
+        emg_raw_cols = set()
+        for limb, cfg in limbs_config[setup_key].items():
+            for emg_raw in cfg.get("emg", []):
+                if emg_raw not in df.columns:
+                    raise ValueError(f"Erwarteter EMG-Kanal '{emg_raw}' fehlt in Datei {fname}.")
+                emg_raw_cols.add(emg_raw)
+        df = add_tkeo(df, sorted(emg_raw_cols), tkeo_window)
+
+        n_samples = len(df)
+        limb_arrays = {} # das hier sind für behavioral labels
+        file_events = {}
+        file_thresholds = {}
+
+        # pro Limb: Baseline-Key bilden, Baseline-Slice bestimmen, pro Kanal k-Threshold berechnen
+        for limb, cfg in limbs_config[setup_key].items():
+            # Limb-Key für Baselines normalisieren (armL -> arm_L)
+            limb_part = _limb_to_baseline_keypart(limb)
+            baseline_key = f"{limb_part}_{setup_key}_{cond}"
+
+            # Slice + (Times nur zu Info, Masken nutzen time_array weiter oben)
+            baseline_slice, _, matched_key = _new_get_baseline_segment_by_key(df, baselines, baseline_key, sampling_freq)
+
+            limb_events = {}
+            limb_thresholds = {}
+
+            # ACC-Kanal
+            acc_col = cfg.get("acc", None)
+            if acc_col and acc_col not in df.columns:
+                raise ValueError(f"Erwarteter ACC-Kanal '{acc_col}' fehlt in Datei {fname}.")
+
+            # EMG-TKEO-Kanäle für diesen Limb
+            emg_tkeo_cols = [f"{emg_raw}_tkeo" for emg_raw in cfg.get("emg", [])]
+            for tcol in emg_tkeo_cols:
+                if tcol not in df.columns:
+                    raise ValueError(f"TKEO-Spalte '{tcol}' fehlt (Datei {fname}).")
+
+            _dbg({
+                "file": name_noext,
+                "limb": limb,
+                "baseline_key": matched_key or baseline_key,
+                "baseline_range_s": baselines.get(matched_key or baseline_key, None),
+                "baseline_slice": [int(baseline_slice.start), int(baseline_slice.stop)]
+            })
+
+            # Masken für die benötigten Kanäle des Limbs erzeugen
+            channel_masks = {}
+
+            def _compute_mask_for_channel(ch_name):
+                # nur bestimmte Kanäle loggen?
+                watch = (debug_channels is None) or (ch_name in set(debug_channels))
+
+                if ch_name not in df.columns:
+                    if watch: _dbg({"file": name_noext, "limb": limb, "channel": ch_name, "error": "missing_column"})
+                    return zeros_bool_like(n_samples), [], [], [], [], None
+
+                if ch_name not in thresholds_by_channel:
+                    raise ValueError(f"k-Wert (thresholds_by_channel) fehlt für Kanal '{ch_name}'.")
+
+                k = float(thresholds_by_channel[ch_name])
+                raw = df[ch_name].values
+
+                # Baseline-Daten
+                xb = raw[baseline_slice]
+                # (hilft, wenn baseline_slice unabsichtlich leer ist)
+                if xb.size == 0:
+                    xb = raw[:int(5 * sampling_freq)]
+
+                mean = float(np.nanmean(xb))
+                std = float(np.nanstd(xb))
+                thr = mean + k * std
+
+                # Diagnose vor Detection
+                if watch:
+                    above_thr_pct = float(np.mean(raw >= thr)) * 100.0 if raw.size else 0.0
+                    _dbg({
+                        "file": name_noext, "limb": limb, "channel": ch_name,
+                        "k": k, "mean": mean, "std": std, "thr": float(thr),
+                        "signal_min": float(np.nanmin(raw)), "signal_max": float(np.nanmax(raw)),
+                        "baseline_len": int(xb.size),
+                        "above_thr_pct": above_thr_pct,
+                    })
+
+                # Events
+                onsets, offsets = threshold_to_pairs(raw, thr)
+                on_m, off_m = take_out_short_off_onset(onsets, offsets, min_pause_secs,
+                                                       sampling_freq)  # robustere Merge-Variante
+                on_f, off_f = filter_pairs_min_length(on_m, off_m, min_len_samples)
+                pairs = pairs_to_list(on_f, off_f)
+                mask = fill_activity_mask(pairs, sampling_freq, time_array)
+
+                # Ausgabe Events (Samples/Sekunden)
+                on_t = [round(float(time_array[i]), 2) for i in on_f]
+                off_t = [round(float(time_array[i]), 2) for i in off_f]
+
+                if watch:
+                    _dbg({
+                        "file": name_noext, "limb": limb, "channel": ch_name,
+                        "n_on": len(on_f), "n_off": len(off_f),
+                        "first_on_s": float(on_t[0]) if on_t else None,
+                        "first_off_s": float(off_t[0]) if off_t else None
+                    })
+
+                thr_info = {
+                    "k": k,
+                    "baseline_key": matched_key or baseline_key,
+                    "baseline_range": baselines.get(matched_key or baseline_key, None),
+                    "mean": mean,
+                    "std": std,
+                    "threshold": float(thr),
+                }
+                return mask, on_f, off_f, on_t, off_t, thr_info
+
+            # ACC-Maske
+            acc_mask = zeros_bool_like(n_samples)
+            if acc_col:
+                acc_mask, on, off, on_t, off_t, thr_info = _compute_mask_for_channel(acc_col)
+                limb_events[acc_col] = {
+                    "onsets_samples": on,
+                    "offsets_samples": off,
+                    "onsets_seconds": on_t,
+                    "offsets_seconds": off_t,
+                }
+                limb_thresholds[acc_col] = thr_info
+            # EMG-Masken
+            emg_masks = []
+            for col in emg_tkeo_cols:
+                mask, on, off, on_t, off_t, thr_info = _compute_mask_for_channel(col)
+                emg_masks.append(mask)
+                limb_events[col] = {
+                    "onsets_samples": on,
+                    "offsets_samples": off,
+                    "onsets_seconds": on_t,
+                    "offsets_seconds": off_t,
+                }
+                limb_thresholds[col] = thr_info
+
+            # Behavioral je nach Setup/Limb
+            if setup_key == "SetupA":
+                while len(emg_masks) < 2:
+                    emg_masks.append(zeros_bool_like(n_samples))
+                delt_mask, brach_mask = emg_masks[0], emg_masks[1]
+                behavioral = create_behavioral_array_arm(delt_mask, brach_mask, acc_mask)
+
+            elif setup_key == "SetupB":
+                if "leg" in limb.lower():
+                    tib_mask = emg_masks[0] if emg_masks else zeros_bool_like(n_samples)
+                    behavioral = create_behavioral_array_leg(tib_mask, acc_mask)
+                else:
+                    while len(emg_masks) < 2:
+                        emg_masks.append(zeros_bool_like(n_samples))
+                    delt_mask, brach_mask = emg_masks[0], emg_masks[1]
+                    behavioral = create_behavioral_array_arm(delt_mask, brach_mask, acc_mask)
+            else:
+                raise ValueError(f"Unbekanntes Setup: {setup_key}")
+
+            limb_arrays[limb] = behavioral.astype(int).tolist()
+            file_events[limb] = limb_events
+            file_thresholds[limb] = limb_thresholds
+
+        result[name_noext] = limb_arrays
+        events_result[name_noext] = file_events  # NEW
+        thresholds_result[name_noext] = file_thresholds
+
+    # JSON speichern
+    with open(output_behavioral_labels_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    with open(output_events_path, "w", encoding="utf-8") as f:
+        json.dump(events_result, f, ensure_ascii=False, indent=2)
+    with open(output_thresholds_path, "w", encoding="utf-8") as f:
+        json.dump(thresholds_result, f, ensure_ascii=False, indent=2)
 
 
-
+    return result, events_result, thresholds_result
 
 
 
@@ -273,19 +713,16 @@ def create_train_df(filepaths, window_size, overlap_value, sf, output_dir):
 
         # --- calculating envelope & tkeo and adding them to df and also smoothing acc data ---#
         df = funcs.add_tkeo_add_envelope(df, EMG_cols, 20, 3, 1000)
-        df = funcs.apply_savgol_rms_acc(df, ACC_cols, savgol_window_length=21, savgol_polyorder=3, rms_window_size=100)
-        df = df.drop(ACC_cols, axis=1)
 
         df = df.dropna(axis=0, how="any", ignore_index=True)  # dropping NaNs
         df["time_sec"] = df["time_sec"] - df["time_sec"].iloc[0]  # resetting time column to start at 0s
         EMG_cols = [col for col in df.columns if any(m in col for m in emg_muscles)]  # getting out final emg cols
-        ACC_cols = ["SVM_smooth_rms"]  # final acc cols
 
         # ========================== extracting features and creating dfs ==============================#
         feature_rows = []
 
         step_size = window_size * overlap_value
-        for window_start in range(0, len(df) - window_size + 1, step_size):  # with 50% overlap
+        for window_start in range(0, len(df) - window_size + 1, int(step_size)):  # with 50% overlap
             end = window_start + window_size
             window = df.iloc[window_start:end]
 
@@ -319,7 +756,7 @@ def create_train_df(filepaths, window_size, overlap_value, sf, output_dir):
     df_train.to_hdf(output_dir, key="data", mode="w")
 
 
-def permutation_importance(model, X_test, y_test, metric=accuracy_score, n_repeats=5):
+def permutation_importance(model, X_test, y_test, metric=accuracy_score, n_repeats=5, top_n=3):
     """
     shuffels each feature column 5 times and outputs the mean difference to the baseline accuracy
     (=accuracy with all features)
@@ -330,6 +767,8 @@ def permutation_importance(model, X_test, y_test, metric=accuracy_score, n_repea
     :param n_repeats: how many times each column gets shuffeled
     :return: returns the mean difference from the metric with the shuffeled col vs. the metric score with all cols
     """
+    rng = np.random.default_rng(seed=42)
+
     X_test = pd.DataFrame(X_test)
     baseline = metric(y_test, model.predict(X_test))
     importances = pd.Series(0.0, index=X_test.columns)
@@ -338,7 +777,7 @@ def permutation_importance(model, X_test, y_test, metric=accuracy_score, n_repea
         drop_scores = []
         for _ in range(n_repeats):
             X_permuted = X_test.copy()
-            X_permuted[col] = np.random.permutation(X_permuted[col].values)
+            X_permuted[col] = rng.permutation(X_permuted[col].values)
             drop = baseline - metric(y_test, model.predict(X_permuted))
             drop_scores.append(drop)
         importances[col] = np.mean(drop_scores)
@@ -351,7 +790,7 @@ def permutation_importance(model, X_test, y_test, metric=accuracy_score, n_repea
 from sklearn.model_selection import LeaveOneGroupOut
 from sklearn.preprocessing import StandardScaler
 
-def prepare_loso_data(df_train):
+def prepare_loso_data(df_train, scaling_style):
     """
     processes Leave-One-Subject-Out Cross-Validation Splits with Z-Scoring.
 
@@ -364,7 +803,7 @@ def prepare_loso_data(df_train):
         ( = every entry represents a different combination of training subs and one test sub)
     """
     # extracting non-feat and feat columns
-    non_feature_cols = ["sub_ID", "label", "window_range_ms"]
+    non_feature_cols = ["sub_ID", "label", "window_range_ms"] # mit .lower() abändern
     feature_cols = [col for col in df_train.columns if col not in non_feature_cols]
 
     # get arrays
@@ -376,30 +815,53 @@ def prepare_loso_data(df_train):
     logo = LeaveOneGroupOut()
     loso_data = []
 
-    # loop through LOSO-Splits
     for train_idx, test_idx in logo.split(X, y, groups=groups):
         X_train_raw, X_test_raw = X[train_idx], X[test_idx]
         y_train, y_test = y[train_idx], y[test_idx]
+        train_groups = groups[train_idx]
+        test_groups = groups[test_idx]
 
-        # Z-Scoring
-        scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train_raw)
-        X_test = scaler.transform(X_test_raw)
+        if scaling_style == "sub-wise":
+            # ---- TRAIN: subject-wise ----
+            X_train = np.empty_like(X_train_raw, dtype=float)
+            for subj in np.unique(train_groups):
+                idx = np.where(train_groups == subj)[0]
+                scaler = StandardScaler()
+                X_train[idx] = scaler.fit_transform(X_train_raw[idx])
 
-        # Test-Proband merken
-        test_sub = np.unique(groups[test_idx])[0] # e.g "sub_E"
+            # ---- TEST: subject-wise ----
+            X_test = np.empty_like(X_test_raw, dtype=float)
+            for subj in np.unique(test_groups):
+                idx = np.where(test_groups == subj)[0]
+                scaler = StandardScaler()
+                X_test[idx] = scaler.fit_transform(X_test_raw[idx])
+
+            scaler_used = None  # pro-Subject-Scaler werden nicht gespeichert
+
+        elif scaling_style == "global":
+            # ---- TRAIN: globaler Scaler auf alle Trainingssamples ----
+            scaler = StandardScaler().fit(X_train_raw)
+            X_train = scaler.transform(X_train_raw)
+            # ---- TEST: gleicher globaler Scaler ----
+            X_test = scaler.transform(X_test_raw)
+            scaler_used = scaler
+        else:
+            raise ValueError("scaling_style muss 'sub-wise' oder 'global' sein.")
+
+        # Info zu Test-Subject(s)
+        test_subs = np.unique(test_groups)  # meist 1 Subjekt bei LOSO
+        test_sub_id = test_subs[0] if len(test_subs) == 1 else list(test_subs)
 
         # Speichern
         loso_data.append({
             "X_train": X_train,
-            "X_test": X_test,
             "y_train": y_train,
+            "X_test": X_test,
             "y_test": y_test,
-            "scaler": scaler,
-            "test_sub_ID": test_sub,
-            "groups": groups
+            "test_sub_ID": test_sub_id,
+            "groups": groups,
+            "scaler": scaler_used,  # nur im 'global'-Fall sinnvoll
         })
-
     return loso_data
 
 
@@ -612,17 +1074,15 @@ def fit_model_acc_sens_spec(loso_data, model_name, ):
 
     if model_name.lower() == "logistic_regression":
         model = LogisticRegression(
-        solver='lbfgs',
-        C=0.1,
+        solver='lbfgs',                                                              # vorher : C=0.1, max_iter=1000
         penalty='l2',
-        max_iter=1000
         )
 
     if model_name.lower() == "knn":
         model = KNeighborsClassifier()
 
     if model_name.lower() == "random_forest":
-        model = RandomForestClassifier(max_features=6)
+        model = RandomForestClassifier()     # vorher max_features=6
 
     accuracies = []
     sensitivities = {cls: [] for cls in class_names}
@@ -661,10 +1121,56 @@ def fit_model_acc_sens_spec(loso_data, model_name, ):
         print(f"{cls}: sensitivity Ø = {mean_sens:.3f}, specificity Ø = {mean_spec:.3f}")
 
 
+def per_class_sens_spec(y_true, y_pred, class_names=None, verbose=True):
+    """
+    Sensitivity (=Recall) und Specificity pro Klasse (one-vs-rest).
+    y_true, y_pred: 1D-Arrays/Liste mit Klassenlabels (Strings oder ints)
+    class_names: optionale Reihenfolge der Klassen; sonst aus y_true|y_pred abgeleitet
+    """
+    # set class order
+    if class_names is None:
+        seen = []
+        for v in list(y_true) + list(y_pred):
+            if v not in seen:
+                seen.append(v)
+        class_names = seen
+    labels = class_names
+
+    # cm
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    total = cm.sum()
+
+    # One-vs-rest
+    TP = np.diag(cm)
+    FP = cm.sum(axis=0) - TP
+    FN = cm.sum(axis=1) - TP
+    TN = total - (TP + FP + FN)
+
+    sens = np.divide(TP, TP + FN, out=np.zeros_like(TP, dtype=float), where=(TP + FN) != 0)
+    spec = np.divide(TN, TN + FP, out=np.zeros_like(TN, dtype=float), where=(TN + FP) != 0)
+
+    acc = accuracy_score(y_true, y_pred)
+
+    if verbose:
+        print(f"Accuracy: {acc:.3f}")
+        for c, s, p in zip(labels, sens, spec):
+            print(f"{c}: sensitivity = {s:.3f}, specificity = {p:.3f}")
+
+    return {
+        "accuracy": acc,
+        "class_names": labels,
+        "sensitivity": dict(zip(labels, sens)),
+        "specificity": dict(zip(labels, spec)),
+        "confusion_matrix": cm,
+    }
+
+
+
+
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 
-def plot_cm(model_name, folds_data, sub_id):
+def plot_cm(model_name, folds_data, sub_id, output_dir, save=False):
     """
     plots confusion matrix for one test sub/fold from the LOSO-Validation
     :param model_name: which model you want to perform the test with
@@ -713,6 +1219,10 @@ def plot_cm(model_name, folds_data, sub_id):
     disp.plot(cmap="Blues", values_format=".0f")
     plt.title(f"Confusion Matrix {model_name} (Test Subject: {test_sub})")
     plt.grid(False)
+
+    if save:
+        plt.savefig(os.path.join(output_dir, f"cm_{model_name}_{test_sub}.svg"))
+
     plt.show()
 
 
@@ -807,6 +1317,128 @@ def plot_loso_roc(loso_data, model_name, class_names, mode='one-vs-all'):
 
 
 
+def subjectwise_zscore(df: pd.DataFrame, group_col: str, cols_to_scale=None) -> pd.DataFrame:
+    """Z-score per sub for die feature cols.
+       Std==0 gets put to 1e-8, so that nothing gets to a NaN (dividing by zero).
+       Important: in the df that gets put in, the only non_feature columns are allowed to be "sub_ID" and "label".
+       If there are more non_feat columns, add them in the list, so that they dont get scaled.
+       group_col: name of the sub_ID col in the df"""
+    df = df.copy()
+    if cols_to_scale is None:
+        non_feat_cols = ["sub_ID", "label"]
+        cols_to_scale = [c for c in df.columns
+                         if c not in non_feat_cols and pd.api.types.is_numeric_dtype(df[c])]
+    print(len(cols_to_scale))
+
+    g = df.groupby(group_col)  # groupby the Subs
+    means = g[cols_to_scale].transform("mean") # size of the train df. Holds the sub-specific mean for each feature
+    stds  = g[cols_to_scale].transform("std").replace(0, 1e-8).fillna(1e-8) # same but with stds
+    df[cols_to_scale] = (df[cols_to_scale] - means) / stds # zscores each value for sub-wise
+    return df
+
+
+def majority_vote_labels(y_samples, window_size, overlap_value, tie_strategy="center"):
+    """
+    Majority Vote pro Fenster mit neutraler Tie-Strategie.
+
+    Args:
+        y_samples: 1D-Array mit 0/1/2 pro Sample
+        window_size: Fensterlänge in SAMPLES (z.B. 250 bei 1 kHz)
+        overlap_value: Overlap (0..1), z.B. 0.5
+        tie_strategy: "center" (default) oder "unknown"
+                      - "center": Label = y_samples[window_center]
+                      - "unknown": Label = -1 (für Coverage-Messung/Evaluation zu maskieren)
+
+    Returns:
+        starts: Startindizes der Fenster (Samples)
+        y_win:  Label pro Fenster (0/1/2 oder -1 bei unknown)
+        props:  Klassenanteile pro Fenster (n_win, 3)
+    """
+    L = int(window_size)
+    S = int(max(1, round(window_size * overlap_value)))
+    N = len(y_samples)
+
+    starts = np.arange(0, N - L + 1, S, dtype=int)
+    y_win = np.zeros(len(starts), dtype=int)
+    props = np.zeros((len(starts), 3), dtype=float)
+
+    for j, s0 in enumerate(starts):
+        s1 = s0 + L
+        w = y_samples[s0:s1]
+        counts = np.bincount(w, minlength=3)
+        props[j] = counts / L
+
+        # Mehrheit bestimmen
+        max_count = counts.max()
+        winners = np.where(counts == max_count)[0]
+
+        if len(winners) == 1:   # wenn es einen gewinner gibt
+            y_win[j] = int(winners[0])
+        else:
+            # exakter Gleichstand (z.B. 50/50 zwischen zwei Klassen)
+            if tie_strategy == "center":
+                y_win[j] = int(w[L // 2])  # Label am Fenstermittelpunkt
+            elif tie_strategy == "unknown": # es wird das unknown label verteilt, man könnte dann diesen punkt von der
+                y_win[j] = -1                             # analyse ausschließen.
+            else:
+                raise ValueError(f"Unbekannte tie_strategy: {tie_strategy}")
+
+    return starts, y_win, props
+
+
+
+def create_test_df(df, output_dir, behavioral_array,
+                   window_size:int =250, overlap_value:float=0.5, sf:int=1000,
+                   tie_strategy:str="center"):
+
+    # --- renaming emg cols ---#
+    emg_muscles = ["brachioradialis", "deltoideus"]
+    emg_cols_raw = [col for col in df.columns if any(m in col for m in emg_muscles)]
+    rename_map = {col: re.sub(r"(_L|_R)$", "", col) for col in emg_cols_raw}
+    df = df.rename(columns=rename_map)
+
+    # --- getting col names ---# --> df already holds envelope, tkeo and smoothed SVM!
+    EMG_cols = [col for col in df.columns if any(m in col for m in emg_muscles)]
+    ACC_cols = ["SVM"]
+
+    # get out labels once for all windows from behavioral array
+    starts, y_labels, props = majority_vote_labels(
+        behavioral_array, window_size, overlap_value, tie_strategy=tie_strategy
+    )
+
+    # ========================== extracting features  ============================== #
+    feature_rows = []
+    label_rows = []
+    label_coding = { -1:"unknown", 0:"rest", 1:"move", 2:"suppr"}
+
+    for idx, (s0, win_label) in enumerate(zip(starts, y_labels)):
+        s1 = s0 + window_size
+        window = df.iloc[s0:s1]
+
+        feats = funcs.extract_features_from_window(window, EMG_cols, ACC_cols)
+
+        start_ms = int((s0 / sf) * 1000)
+        end_ms = int((s1 / sf) * 1000)
+        feats["window_range_ms"] = f"{start_ms}-{end_ms}ms"
+
+        # label picking
+        lab = int(y_labels[idx])
+        # feats["label"] = { -1:"unknown", 0:"rest", 1:"move", 2:"suppr"}  # label matching
+
+        feature_rows.append(feats)
+
+        label_rows.append(win_label)
+
+    df_test = pd.DataFrame(feature_rows)
+
+    col_order = ["window_range_ms"] + [col for col in df_test.columns if
+                                                          col not in ["label", "window_range_ms"]]
+    df_final = df_test[col_order]
+    df_final.columns = [col.replace('_R_', '_') for col in df_final.columns]
+    # df_final.to_hdf(output_dir, key="data", mode="w")
+
+    return df_final, label_rows, label_coding
+
 
 # schonmal funktion für die kontinuierlichen daten!
 def detect_onsets(predictions, target_class='movement'):
@@ -815,6 +1447,15 @@ def detect_onsets(predictions, target_class='movement'):
         if predictions[i-1] != target_class and predictions[i] == target_class:
             onsets.append(i)
     return onsets
+
+
+
+
+
+
+
+
+
 
 
 
@@ -954,7 +1595,7 @@ def _interactive_window(df, channels, side, sf, results_dict, window_title, init
                 print(f"[PNG DEBUG] Subplot-BBox (inches): {w_in:.2f} x {h_in:.2f}")
 
                 # DPI-Sicherheitscheck
-                target_dpi = 200
+                target_dpi = 300
                 max_pixels = 10000
                 if w_in * target_dpi > max_pixels or h_in * target_dpi > max_pixels:
                     scale_w = max_pixels / (w_in * target_dpi)
@@ -1023,13 +1664,13 @@ def _interactive_window(df, channels, side, sf, results_dict, window_title, init
         axdur = plt.axes([0.40, y0, 0.20, 0.03])
         axpau = plt.axes([0.65, y0, 0.20, 0.03])
 
-        k0   = init_params.get(ch, {}).get("k", 5.0)
-        dur0 = init_params.get(ch, {}).get("min_dur", 0.0)
-        pau0 = init_params.get(ch, {}).get("min_pause", 0.0)
+        k0   = init_params.get(ch, {}).get("k", 6.0) # changed default vals
+        dur0 = init_params.get(ch, {}).get("min_dur", 0.05)
+        pau0 = init_params.get(ch, {}).get("min_pause", 0.1)
 
-        sk   = Slider(axk,   f'{ch} k',        0.0, 100.0, valinit=k0,   valstep=0.5)
-        sdur = Slider(axdur, 'Dauer (s)',      0.0,   5.0, valinit=dur0, valstep=0.05)
-        spau = Slider(axpau, 'Pause (s)',      0.0,   5.0, valinit=pau0, valstep=0.05)
+        sk   = Slider(axk,   f'{ch} k',        0.0, 25.0, valinit=k0,   valstep=0.5) # changed default vals
+        sdur = Slider(axdur, 'Dauer (s)',      0.0,   2.5, valinit=dur0, valstep=0.05) # changed default vals
+        spau = Slider(axpau, 'Pause (s)',      0.0,   3.0, valinit=pau0, valstep=0.01) # changed default vals
 
         k_sliders.append(sk); dur_sliders.append(sdur); pause_sliders.append(spau)
 
@@ -1160,16 +1801,16 @@ def interactive_move_detection(
         if "setupa" in basename_lower or "setup_a" in basename_lower:
             # 2 windows à 3 Subplots
             windows = [
-                (["brachioradialis_L_tkeo", "deltoideus_L_tkeo", "SVM_L_smooth_rms"], "L", f"{base_noext} – SetupA – LEFT_ARM", "arm_L",
+                (["brachioradialis_L_tkeo", "deltoideus_L_tkeo", "SVM_L"], "L", f"{base_noext} – SetupA – LEFT_ARM", "arm_L",
                  os.path.join(fig_dir, f"sub-{sub}_setupA_{task}_armL.png")),
-                (["brachioradialis_R_tkeo", "deltoideus_R_tkeo", "SVM_R_smooth_rms"], "R", f"{base_noext} – SetupA – RIGHT_ARM", "arm_R",
+                (["brachioradialis_R_tkeo", "deltoideus_R_tkeo", "SVM_R"], "R", f"{base_noext} – SetupA – RIGHT_ARM", "arm_R",
                  os.path.join(fig_dir, f"sub-{sub}_setupA_{task}_armR.png"))
             ]
         elif "setupb" in basename_lower or "setup_b" in basename_lower:
             windows = [
-                (["brachioradialis_L_tkeo", "deltoideus_L_tkeo", "SVM_L_smooth_rms"], "L", f"{base_noext} – SetupB – LEFT_ARM", "arm_L",
+                (["brachioradialis_L_tkeo", "deltoideus_L_tkeo", "SVM_L"], "L", f"{base_noext} – SetupB – LEFT_ARM", "arm_L",
                  os.path.join(fig_dir, f"sub-{sub}_setupB_{task}_armL.png")),
-                (["tibialisAnterior_L_tkeo", "SVM_R_smooth_rms"], "R", f"{base_noext} – SetupB – LEFT_LEG", "leg_L",
+                (["tibialisAnterior_L_tkeo", "SVM_R"], "R", f"{base_noext} – SetupB – LEFT_LEG", "leg_L",
                  os.path.join(fig_dir, f"sub-{sub}_setupB_{task}_legL.png"))
             ]
         else:
@@ -1190,7 +1831,6 @@ def interactive_move_detection(
 
         df = funcs.add_tkeo(df, ["brachioradialis_L", "deltoideus_L", "brachioradialis_R", "deltoideus_R",
                                  "tibialisAnterior_L", "tibialisAnterior_R"], window_size=20)
-        df = funcs.apply_savgol_rms_acc(df, ["SVM_L", "SVM_R"])
 
         # ------------ interactive windows ------------
         results_all = {}  # here, we save per folder all channels
