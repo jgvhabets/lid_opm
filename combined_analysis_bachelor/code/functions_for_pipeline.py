@@ -57,7 +57,7 @@ def plot_channel_overview(channels, df, title_name, location, emg):
         axs[i].set_ylabel("Amplitude (V)" if channel in emg else "g")
         plt.suptitle(f"plots for {title_name}")
         #plt.ylim()
-        if i > len(channels): #abändern, dass man nur so viele ax hat wie auch channel!
+        if i > len(channels): #abändern, dass man nur so viele ax hat wie auch channel?
             axs.axis("off")
 
     plt.tight_layout()
@@ -127,40 +127,27 @@ def add_tkeo_add_envelope(df, emg_columns, window_size_tkeo, envelope_freq, sf, 
 def add_tkeo(df, emg_columns, window_size):
     added_to_df = df.copy()
     for col in emg_columns:
+        if col not in df.columns:
+            continue
         col_data = df[col].to_numpy()
+        if len(col_data) < 3:
+            raise ValueError(f"col {col} does not have enough samples for TKEO")
         tkeo_col = col_data[1:-1] ** 2 - col_data[0:-2] * col_data[2:]
         tkeo_padded = np.pad(tkeo_col, (1, 1), 'edge')
-        tkeo_rectified = abs(tkeo_padded)
-        tkeo_smoothed = np.sqrt(np.convolve(tkeo_rectified ** 2, np.ones(window_size) / window_size, mode='same'))
+        tkeo_rectified = np.abs(tkeo_padded)
+        kernel = np.ones(window_size) / max(1, window_size)
+        tkeo_smoothed = np.sqrt(np.convolve(tkeo_rectified ** 2, kernel, mode='same'))
         added_to_df[f"{col}_tkeo"] = tkeo_smoothed
     return added_to_df
 
-def savgol(df, acc_columns, window_length=21, polyorder=3):
-    smoothed_acc_df = df.copy()
-    for col in acc_columns:
-        col_data = df[col].to_numpy()
-        smoothed_acc = savgol_filter(col_data, window_length=window_length, polyorder=polyorder)
-        smoothed_acc_df[col] = smoothed_acc
-    return smoothed_acc_df
 
 def root_mean_square(df, chosen_columns, window_size=50):
     rms_df = df.copy()
     for col in chosen_columns:
         col_data = df[col].to_numpy()
         rms = np.sqrt(np.convolve(col_data**2, np.ones(window_size)/window_size, mode='same'))
-        rms_df[col] = rms
+        rms_df[f"{col}_rms"] = rms
     return rms_df
-
-def apply_savgol_rms_acc(df, chosen_columns, savgol_window_length=21, savgol_polyorder=3, rms_window_size=100):
-    added_df = df.copy()
-    for col in chosen_columns:
-        col_data = df[col].to_numpy()
-        smoothed_acc = savgol_filter(col_data, window_length=savgol_window_length, polyorder=savgol_polyorder)
-        savgol_rms_acc = np.sqrt(np.convolve(smoothed_acc ** 2, np.ones(rms_window_size) / rms_window_size, mode='same'))
-        added_df[f"{col}_smooth_rms"] = savgol_rms_acc
-
-    return added_df
-
 
 
 def movement_detection(data, threshold):
@@ -431,14 +418,14 @@ from matplotlib import gridspec
 def simple_interactive_multichannel_plot(df, channels, baseline_parts, baseline_key, sf,
                                          save_OnOffsets=False, json_path=None, give_out_dict=False):
     """
-    Interaktive Mehrkanal-Plots mit je Kanal eigenen Slidern (unter dem Plot).
-    Mit option die on-offsets zu speichern.
+    Interaktive Plots with sliders under the plots.
+    with option to save plots or not
 
-    df: DataFrame mit Signalsäulen und 'Sync_Time (s)'
-    channels: Liste der Kanalnamen, die geplottet werden sollen
+    df: input df
+    channels: list of channels that should be plotted
     baseline_parts: dict -> {baseline_key: (start_s, end_s)}
-    baseline_key: Key für baseline_parts
-    sf: Samplingfrequenz
+    baseline_key: Key for baseline_parts
+    sf: sampling frequency
     """
     sync_times = df["Sync_Time (s)"].to_numpy()
     baseline_start, baseline_end = baseline_parts[baseline_key]
@@ -460,7 +447,7 @@ def simple_interactive_multichannel_plot(df, channels, baseline_parts, baseline_
     signals = []
     k_sliders, dur_sliders, pause_sliders = [], [], []
 
-    # Helper: Anfangsk-Schätzer (falls du schon eine eigene hast, ersetze das)
+    # Helper: finding initial k
     def find_initial_k(signal, mu, sigma, sf):
         # simpler default: 20
         return 3
@@ -524,23 +511,40 @@ def simple_interactive_multichannel_plot(df, channels, baseline_parts, baseline_
             thr = mu + k * sigma
             threshold_lines[i].set_data(sync_times, np.full_like(sync_times, thr))
 
-            # 1) Binarisieren & Mindestdauer anwenden
-            labels_array, n_lbl = label(sig > thr)
-            valid = np.zeros_like(sig, dtype=bool)
+            # Threshold-Maske
+            mask = sig > thr
+
+            # Erste Runs aus der *rohen* Maske
+            labels_array, n_lbl = label(mask)
+            runs = []
             for lbl_id in range(1, n_lbl + 1):
                 idx = np.where(labels_array == lbl_id)[0]
-                if idx.size >= int(min_duration_s * sf):
-                    valid[idx] = True
+                runs.append((idx[0], idx[-1] + 1))  # [start, end) in Samples
 
-            # 2) Onsets/Offsets aus valid
-            diff = np.diff(valid.astype(int))
-            onsets = np.where(diff == 1)[0] + 1
-            offsets = np.where(diff == -1)[0] + 1
+            # Kurze Lücken MERGEN (min_pause) – ohne Edges zu verändern
+            min_gap = int(round(min_pause_s * sf))
+            if runs:
+                merged = [runs[0]]
+                for s, e in runs[1:]:
+                    prev_s, prev_e = merged[-1]
+                    gap = s - prev_e
+                    if gap <= min_gap:
+                        # zusammenlegen
+                        merged[-1] = (prev_s, e)
+                    else:
+                        merged.append((s, e))
+            else:
+                merged = []
 
-            # 3) kurze Pausen entfernen
-            onsets, offsets = move_funcs.take_out_short_off_onset(onsets, offsets, min_pause_s, sf)
+            # Zu kurze Runs (nach dem Mergen) komplett verwerfen
+            min_len = int(round(min_duration_s * sf))
+            kept = [(s, e) for (s, e) in merged if (e - s) >= min_len]
 
-            # 4) Plot-Markierungen aktualisieren
+            # Finale On-/Offsets aus den behaltenen Runs
+            onsets = np.array([s for (s, e) in kept], dtype=int)
+            offsets = np.array([e for (s, e) in kept], dtype=int)
+
+            # Plot-Markierungen aktualisieren
             for l in onset_lines[i] + offset_lines[i]:
                 try:
                     l.remove()
@@ -554,7 +558,7 @@ def simple_interactive_multichannel_plot(df, channels, baseline_parts, baseline_
             for x in offsets:
                 offset_lines[i].append(ax_sig[i].axvline(sync_times[x], ls="--", c="k"))
 
-            # 5) Ergebnisse (Sekunden-Paare) merken – letzter Slider-Stand
+            # Ergebnisse (Sekunden-Paare) merken – letzter Slider-Stand
             on_sec = [float(sync_times[x]) for x in onsets]
             off_sec = [float(sync_times[x]) for x in offsets]
             pairs_seconds = move_funcs.new_on_offsets(on_sec, off_sec, end_index=float(sync_times[-1]))  # oder move_funcs.new_on_offsets(...)
@@ -724,11 +728,18 @@ def plot_sliding_window_detection(
 
 
 
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+
 def plot_with_behavior(
     df,
     behavioral_array,
     onoffset_array_delt,
     onoffset_array_brachio,
+    onoffset_array_acc,
     *,
     save=False,
     save_path="../images/plot_brachio_delt_svm_behavior_R.png",
@@ -736,176 +747,308 @@ def plot_with_behavior(
     figsize=(12, 9)
 ):
     """
-    Erzeugt 4 Subplots:
+    4 Subplots:
       1) brachioradialis_R (mit On-/Offset-Linien)
-      2) deltoideus_R     (mit On-/Offset-Linien)
-      3) SVM_R            (ohne Linien)
-      4) Behavioral states (als Farbbalken)
+      2) deltoideus_R      (mit On-/Offset-Linien)
+      3) SVM               (mit On-/Offset-Linien aus ACC, falls gewünscht)
+      4) Behavioral states als Farbbalken
 
     Erwartete DF-Spalten (fix):
       - "Sync_Time (s)"
       - "brachioradialis_R"
       - "deltoideus_R"
-      - "SVM_R"
-
-    Parameter
-    ---------
-    df : pandas.DataFrame
-        Enthält die o.g. Spalten.
-    behavioral_array : 1D-Array/Liste (Länge M)
-        Diskrete Zustände (0=rest, 1=move, 2=suppression).
-    onoffset_array_delt : Liste von [on_idx, off_idx]
-        Index-Paare in df-Zeit (Zeilenindizes) für deltoideus_R.
-    onoffset_array_brachio : Liste von [on_idx, off_idx]
-        Index-Paare in df-Zeit (Zeilenindizes) für brachioradialis_R.
-    save : bool, optional
-        Wenn True, speichert als PNG unter save_path.
-    save_path : str, optional
-        Zielpfad fürs Bild.
-    dpi : int, optional
-        Auflösung beim Speichern.
-    figsize : tuple, optional
-        Figure-Größe.
-
-    Returns
-    -------
-    fig, axs : Matplotlib Figure und Achsenarray
+      - "SVM"   (umbenannt von SVM_R)
     """
 
-    required_cols = ["Sync_Time (s)", "brachioradialis_R", "deltoideus_R", "SVM_R"]
+    # --- Checks ---
+    #required_cols = ["Sync_Time (s)", "brachioradialis_L", "deltoideus_L", "SVM_R", "SVM_L"]
+    required_cols = ["Sync_Time (s)", "brachioradialis_R", "deltoideus_R", "SVM"]
     for c in required_cols:
         if c not in df.columns:
             raise ValueError(f"Spalte '{c}' fehlt im DataFrame.")
 
-    # --- feste Farbzuteilungen (wie gewünscht) ---
-    state_colors = {
-        0: 'white',         # rest
-        1: 'darkseagreen',  # move
-        2: 'palevioletred', # suppression
-    }
-    onset_color  = "green"
-    offset_color = "black"
-
-    # --- Daten aus DF ---
-    time_vals         = df["Sync_Time (s)"].values
-    brachioradialis_R = df["brachioradialis_R"].values
-    deltoideus_R      = df["deltoideus_R"].values
-    SVM_R             = df["SVM_R"].values
-
-    if len(behavioral_array) < 1:
+    if behavioral_array is None or len(behavioral_array) < 1:
         raise ValueError("behavioral_array ist leer.")
 
-    # Zeitgrenzen passend zu den Behavioral-Samples
+    # --- Farben & Styles ---
+    state_colors = {0: 'lightsteelblue', 1: 'darkseagreen', 2: 'orchid'}
+    onset_color, offset_color = "gray", "silver"
+
+    # Gridlines sicher aus
+    plt.rcParams["axes.grid"] = False
+
+    # --- Daten ---
+    time_vals         = df["Sync_Time (s)"].to_numpy()
+    brachioradialis_L = df["brachioradialis_R"].to_numpy()
+    deltoideus_L      = df["deltoideus_R"].to_numpy()
+    brachioradialis_R = df["brachioradialis_R"].to_numpy()
+    deltoideus_R      = df["deltoideus_R"].to_numpy()
+    #SVM_vals          = df["SVM_L"].to_numpy()
+    SVM_vals            = df["SVM"].to_numpy()
+
+    if time_vals[0] == time_vals[-1]:
+        raise ValueError("Zeitachse hat keine Breite (alle Zeiten gleich).")
+
+    # Grenzen passend zur Länge der behavioral-Samples
     time_boundaries = np.linspace(time_vals[0], time_vals[-1], len(behavioral_array) + 1)
 
-    # --- Figure/Axes ---
+    # --- Figure/Axes (kein Grid, sauberes Layout) ---
     fig, axs = plt.subplots(
-        4, 1, sharex=True, figsize=figsize,
-        gridspec_kw={'height_ratios': [1, 1, 1, 0.45], 'hspace': 0.35}
+        4, 1, sharex=True, figsize=figsize, constrained_layout=True,
+        gridspec_kw={'height_ratios': [1, 1, 1, 0.45]}
     )
 
-    def shade_behavior(ax, alpha=0.15):
-        """Dezente Hinterlegung der Behavioral-Zustände."""
+    # Helper: Behavioral-Hinterlegung
+    def shade_behavior(ax, alpha=0.15, zorder=0):
         current_state = behavioral_array[0]
         start_idx = 0
         for i in range(1, len(behavioral_array)):
             if behavioral_array[i] != current_state:
                 ax.axvspan(time_boundaries[start_idx], time_boundaries[i],
                            facecolor=state_colors.get(current_state, 'white'),
-                           alpha=alpha)
+                           alpha=alpha, zorder=zorder, edgecolor="none",
+                           linewidth=0, antialiased=False)
                 current_state = behavioral_array[i]
                 start_idx = i
         ax.axvspan(time_boundaries[start_idx], time_boundaries[-1],
                    facecolor=state_colors.get(current_state, 'white'),
-                   alpha=alpha)
+                   alpha=alpha, zorder=zorder, edgecolor="none",
+                           linewidth=0, antialiased=False)
 
-    # --- Subplot 1: brachioradialis_R (mit On-/Offsets) ---
-    shade_behavior(axs[0], alpha=0.15)
-    axs[0].plot(time_vals, brachioradialis_R, color='C0')
-    for pair in onoffset_array_brachio:
-        if len(pair) != 2:
-            continue
-        on_idx, off_idx = pair
-        axs[0].axvline(time_vals[on_idx],  ls="--", c=onset_color)
-        axs[0].axvline(time_vals[off_idx], ls="--", c=offset_color)
+    # Helper: sichere On-/Off-Linien (Index-Clamping)
+    def draw_onoffset_lines(ax, pairs, xvals, on_color, off_color, zorder=3):
+        n = len(xvals)
+        for pair in (pairs or []):
+            if not (isinstance(pair, (list, tuple)) and len(pair) == 2):
+                continue
+            on_idx  = int(np.clip(pair[0], 0, n - 1))
+            off_idx = int(np.clip(pair[1], 0, n - 1))
+            ax.axvline(xvals[on_idx],  ls="--", c=on_color,  zorder=zorder)
+            ax.axvline(xvals[off_idx], ls="--", c=off_color, zorder=zorder)
+
+    # --- Subplot 1: brachioradialis_R ---
+    shade_behavior(axs[0], alpha=0.15, zorder=0)
+    axs[0].plot(time_vals, brachioradialis_L, color='lightskyblue', zorder=2, label="M. brachioradialis L")
+    draw_onoffset_lines(axs[0], onoffset_array_brachio, time_vals, onset_color, offset_color, zorder=3)
     axs[0].set_ylabel("Amplitude (µV)")
-    axs[0].set_title("brachioradialis_R", pad=5)
-    axs[0].spines[['right', 'top']].set_visible(False)
+    axs[0].set_title("brachioradialis", pad=5)
+    axs[0].spines[['top', "bottom"]].set_visible(False)
+    #axs[0].tick_params(bottom=True, left=True)
+    axs[0].set_yticks([-400, 0, 400])
 
-    # --- Subplot 2: deltoideus_R (mit On-/Offsets) ---
-    shade_behavior(axs[1], alpha=0.15)
-    axs[1].plot(time_vals, deltoideus_R, color='C1')
-    for pair in onoffset_array_delt:
-        if len(pair) != 2:
-            continue
-        on_idx, off_idx = pair
-        axs[1].axvline(time_vals[on_idx],  ls="--", c=onset_color)
-        axs[1].axvline(time_vals[off_idx], ls="--", c=offset_color)
+    # --- Subplot 2: deltoideus_R ---
+    shade_behavior(axs[1], alpha=0.15, zorder=0)
+    axs[1].plot(time_vals, deltoideus_L, color="cornflowerblue", zorder=2, label="M. deltoideus anterior L")
+    draw_onoffset_lines(axs[1], onoffset_array_delt, time_vals, onset_color, offset_color, zorder=3)
     axs[1].set_ylabel("Amplitude (µV)")
-    axs[1].set_title("deltoideus_R", pad=5)
-    axs[1].spines[['right', 'top']].set_visible(False)
+    axs[1].set_title("deltoideus", pad=5)
+    axs[1].spines[['top', "bottom"]].set_visible(False)
+    axs[1].tick_params(bottom=True, left=True)
+    #sp = axs[1].spines["bottom"]
+    #axs[1].set_visible(False)
+    axs[1].set_yticks([-500, 0, 500, 1000])
 
-    # --- Subplot 3: SVM_R (nur Signal) ---
-    shade_behavior(axs[2], alpha=0.15)
-    axs[2].plot(time_vals, SVM_R, color='C2')
-    axs[2].set_ylabel("Amplitude (a.u.)")
-    axs[2].set_title("SVM_R", pad=5)
-    axs[2].spines[['right', 'top']].set_visible(False)
+    # --- Subplot 3: SVM ---
+    shade_behavior(axs[2], alpha=0.15, zorder=0)
+    axs[2].plot(time_vals, SVM_vals, color='steelblue', zorder=2, label="right hand ACC SVM")
+    draw_onoffset_lines(axs[2], onoffset_array_acc, time_vals, onset_color, offset_color, zorder=3)
+    axs[2].set_ylabel("Acceleration (g)")
+    #axs[2].set_title("SVM_R", pad=5)
+    axs[2].set_title("SVM", pad=5)
+    axs[2].spines[['top', "bottom"]].set_visible(False)
+    axs[2].tick_params(bottom=True, left=True, )
+    axs[2].set_yticks([0, 0.25, 0.5])
 
-    # --- Subplot 4: Behavioral als durchgehende Farbflächen ---
-    current_state = behavioral_array[0]
-    start_idx = 0
-    for i in range(1, len(behavioral_array)):
-        if behavioral_array[i] != current_state:
-            axs[3].axvspan(time_boundaries[start_idx], time_boundaries[i],
-                           facecolor=state_colors.get(current_state, 'white'),
-                           alpha=0.8)
-            current_state = behavioral_array[i]
-            start_idx = i
-    axs[3].axvspan(time_boundaries[start_idx], time_boundaries[-1],
-                   facecolor=state_colors.get(current_state, 'white'),
-                   alpha=0.8)
+    # --- Subplot 4: Behavioral als Balken ---
+    shade_behavior(axs[3], alpha=0.7, zorder=0)
     axs[3].set_yticks([])
     axs[3].set_xlabel("Time (s)")
-    axs[3].spines[['right', 'top', 'left']].set_visible(False)
+    axs[3].spines[['top', 'left']].set_visible(False)
+    axs[3].spines['bottom'].set_visible(True)
+    axs[3].set_xticks([0, 5, 10, 15, 20, 25, 30, 35])
+    sp = axs[3].spines["bottom"]
+    sp.set_linewidth(0.8)
+    sp.set_color("black")
+    sp.set_zorder(10)
 
-    # --- Legenden (fix) ---
+    # --- Legenden (innen, hohe zorder) ---
     emg_elements = [
-        Line2D([0], [0], color='C0', label='Signal'),
-        Line2D([0], [0], color='green', linestyle='--', label='Onset'),
-        Line2D([0], [0], color='black', linestyle='--', label='Offset')
+        Line2D([0], [0], color='lightskyblue', label="M. brachioradialis_L"),
+        Line2D([0], [0], color='cornflowerblue', label="M. deltoideus anterior_L"),
+        Line2D([0], [0], color='steelblue', label="SVM"),
+        Line2D([0], [0], color=onset_color,  linestyle='--', label='emg onset'),
+        Line2D([0], [0], color=offset_color, linestyle='--', label='emg offset')
     ]
-    axs[0].legend(handles=emg_elements, loc='center left', bbox_to_anchor=(0.99, 0.5), frameon=False)
+    leg0 = axs[0].legend(handles=emg_elements, loc='upper right', frameon=False)
+    leg0.set_zorder(4)
 
     behavior_patches = [
         Patch(facecolor=state_colors[0], label='rest'),
         Patch(facecolor=state_colors[1], label='movement'),
         Patch(facecolor=state_colors[2], label='suppression'),
     ]
-    axs[3].legend(handles=behavior_patches, loc='center left', bbox_to_anchor=(0.99, 0.5), frameon=False)
+    leg3 = axs[3].legend(handles=behavior_patches, loc='upper right', frameon=False)
+    leg3.set_zorder(4)
 
-    # --- Achsenformatierung (fix) ---
+    # --- Achsenformatierung: Ticks & Limits ---
     for ax in axs:
         ax.set_xlim(time_vals[0], time_vals[-1])
-
-        # Ticks alle 10 s, an den Datenbereich angepasst
-        t0 = float(time_vals[0])
-        t1 = float(time_vals[-1])
+        # optional: weiße Hintergründe für Styles, die dunkel sind
+        ax.set_facecolor("white")
+        # Ticks alle 10 s (rundet an Datenbereich an)
+        t0, t1 = float(time_vals[0]), float(time_vals[-1])
         start_tick = 10 * np.floor(t0 / 10.0)
         end_tick   = 10 * np.ceil(t1 / 10.0)
         ticks = np.arange(start_tick, end_tick + 1e-9, 10.0)
         ax.set_xticks(ticks)
         ax.set_xticklabels([f"{int(t)}" for t in ticks])
+        ax.set_xlim(0, 35)
+        #ax.set_xlim(15, 95)
+        #ax.set_xlim(10,300)
         ax.tick_params(axis='x', labelbottom=True)
+        ax.grid(False)  # sicherheitshalber
 
-    plt.tight_layout()
-    plt.subplots_adjust(right=0.85, hspace=0.25)
-    plt.show()
-
+    # --- Render & Save/Show ---
     if save:
-        plt.savefig(save_path, bbox_inches="tight", dpi=dpi)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        fig.canvas.draw()  # stellt sicher, dass Layout/Legenden final sind
+        fig.savefig(
+            save_path,
+            dpi=dpi,
+            facecolor=fig.get_facecolor(),
+            edgecolor='none'
+        )
+        plt.close(fig)
+    else:
+        plt.show()
 
-    #return fig, axs
+
+def plot_with_behavior_leg(
+    df,
+    behavioral_array,
+    onoffset_array_tibia,
+    onoffset_array_acc_leg,
+    *,
+    save=False,
+    save_path="../images/plot_brachio_delt_svm_behavior_R.png",
+    dpi=300,
+    figsize=(12, 8)
+):
+    # --- Checks ---
+    required_cols = ["Sync_Time (s)", "SVM_R", "SVM_L", "tibialisAnterior_L"]
+    for c in required_cols:
+        if c not in df.columns:
+            raise ValueError(f"Spalte '{c}' fehlt im DataFrame.")
+    if behavioral_array is None or len(behavioral_array) < 1:
+        raise ValueError("behavioral_array ist leer.")
+
+    # --- Farben & Styles ---
+    state_colors = {0: 'lightsteelblue', 1: 'darkseagreen', 2: 'orchid'}
+    onset_color, offset_color = "gray", "silver"
+
+    plt.rcParams["axes.grid"] = False
+
+    # --- Daten ---
+    time_vals            = df["Sync_Time (s)"].to_numpy()
+    tibialisAnterior_L   = df["tibialisAnterior_L"].to_numpy()
+    SVM_vals             = df["SVM_R"].to_numpy()
+    if time_vals[0] == time_vals[-1]:
+        raise ValueError("Zeitachse hat keine Breite (alle Zeiten gleich).")
+
+    # Zeitgrenzen & 50s-Ticks
+    x_left, x_right = 50, 300
+    ticks_50 = np.arange(x_left, x_right + 1e-9, 50.0)
+
+    # Grenzen passend zur Länge der behavioral-Samples
+    time_boundaries = np.linspace(time_vals[0], time_vals[-1], len(behavioral_array) + 1)
+
+    # --- Figure/Axes ---
+    fig, axs = plt.subplots(
+        3, 1, sharex=True, figsize=figsize, constrained_layout=True,
+        gridspec_kw={'height_ratios': [1, 1, 0.45]}
+    )
+
+    # Helper: Behavioral-Hinterlegung (ohne weiße Kanten, kein Antialiasing)
+    def shade_behavior(ax, alpha=0.15, zorder=0):
+        current_state = behavioral_array[0]
+        start_idx = 0
+        for i in range(1, len(behavioral_array)):
+            if behavioral_array[i] != current_state:
+                ax.axvspan(time_boundaries[start_idx], time_boundaries[i],
+                           facecolor=state_colors.get(current_state, 'white'),
+                           alpha=alpha, zorder=zorder,
+                           edgecolor='none', linewidth=0, antialiased=False)
+                current_state = behavioral_array[i]
+                start_idx = i
+        ax.axvspan(time_boundaries[start_idx], time_boundaries[-1],
+                   facecolor=state_colors.get(current_state, 'white'),
+                   alpha=alpha, zorder=zorder,
+                   edgecolor='none', linewidth=0, antialiased=False)
+
+    # Helper: On-/Off-Linien
+    def draw_onoffset_lines(ax, pairs, xvals, on_color, off_color, zorder=3):
+        n = len(xvals)
+        for pair in (pairs or []):
+            if not (isinstance(pair, (list, tuple)) and len(pair) == 2):
+                continue
+            on_idx  = int(np.clip(pair[0], 0, n - 1))
+            off_idx = int(np.clip(pair[1], 0, n - 1))
+            ax.axvline(xvals[on_idx],  ls="--", c=on_color,  zorder=zorder)
+            ax.axvline(xvals[off_idx], ls="--", c=off_color, zorder=zorder)
+
+    # --- Subplot 1: tibialis_L ---
+    shade_behavior(axs[0], alpha=0.2, zorder=0)
+    axs[0].plot(time_vals, tibialisAnterior_L, color='slateblue', zorder=2)
+    draw_onoffset_lines(axs[0], onoffset_array_tibia, time_vals, onset_color, offset_color, zorder=3)
+    axs[0].set_ylabel("Amplitude (µV)")
+    axs[0].set_title("left tibialisAnterior", pad=5)
+    axs[0].spines[['right', 'top']].set_visible(False)
+    sp = axs[0].spines["left"]; sp.set_visible(True); sp.set_linewidth(0.8); sp.set_color('black'); sp.set_zorder(10)
+
+    # --- Subplot 2: SVM ---
+    shade_behavior(axs[1], alpha=0.2, zorder=0)
+    axs[1].plot(time_vals, SVM_vals, color='darkblue', zorder=2)
+    draw_onoffset_lines(axs[1], onoffset_array_acc_leg, time_vals, onset_color, offset_color, zorder=3)
+    axs[1].set_ylabel("Acceleration (g)")
+    axs[1].set_title("SVM leg", pad=5)
+    axs[1].spines[["bottom"]].set_visible(True)
+    for side in ['bottom', 'left']:
+        sp = axs[1].spines[side]; sp.set_visible(True); sp.set_linewidth(0.8); sp.set_color('black'); sp.set_zorder(10)
+
+    # --- Subplot 3: Behavioral als Balken (mit harter Kanten-Deaktivierung) ---
+    shade_behavior(axs[2], alpha=0.8, zorder=0)  # nutzt edgecolor='none', antialiased=False
+    axs[2].set_yticks([])
+    axs[2].set_xlabel("Time (s)")
+    axs[2].spines[['bottom']].set_visible(True)
+    sp = axs[2].spines["bottom"]; sp.set_visible(True); sp.set_linewidth(0.8); sp.set_color('black'); sp.set_zorder(10)
+
+    # --- Achsenformatierung: Ticks & Limits ---
+    for ax in axs:
+        ax.set_xlim(x_left, x_right)
+        ax.set_facecolor("white")
+        ax.set_xticks(ticks_50)
+        ax.set_xticklabels([f"{int(t)}" for t in ticks_50])
+        ax.grid(False)
+
+    # x-Labels sichtbar im mittleren & unteren Plot, oben ohne
+    axs[0].tick_params(axis='x', labelbottom=False)
+    axs[1].tick_params(axis='x', bottom=True, labelbottom=True)
+    axs[2].tick_params(axis='x', bottom=True, labelbottom=True)
+
+    # --- Render & Save/Show ---
+    if save:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        fig.canvas.draw()
+        fig.savefig(
+            save_path,
+            dpi=dpi,
+            bbox_inches='tight',
+            facecolor=fig.get_facecolor(),
+            edgecolor='none'
+        )
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 # ----------
@@ -981,9 +1124,13 @@ def get_envelope_emg_task_dfs(filepaths):
 
 # ----------------------ML functions --------------
 
-def crop_edges(df, samples=1000):
-    if len(df) > 2 * samples:
-        return df.iloc[samples:-samples].reset_index(drop=True)
+def crop_edges(df, samples=1000, crop_only_end=False):
+    if crop_only_end:
+        if len(df) > 2 * samples:
+            return df.iloc[:-samples].reset_index(drop=True)
+    else:
+        if len(df) > 2 * samples:
+            return df.iloc[samples:-samples].reset_index(drop=True)
     return df.copy()
 
 def sliding_windows(df, window_size=250, step_size=125):
@@ -1001,14 +1148,14 @@ def extract_features_from_window(window, emg_channels, acc_channels):
         sig = window[ch].values
 
         features[f"{ch}_rms"] = np.sqrt(np.mean(sig**2))
-        features[f"{ch}_mean"] = np.mean(sig) # -- vllt eher absolute mean value? MAV wird in paper so genannt
+        features[f"{ch}_mav"] = np.mean(abs(sig))
         features[f"{ch}_std"] = np.std(sig)
         features[f"{ch}_max"] = np.max(sig)
 
         mean = np.mean(sig)
         if "envelope" in ch and mean != 0:
             features[f"{ch}_coefVar"] = np.std(sig) / mean
-        if not "envelope" in ch:
+        if not "envelope" in ch and not "tkeo" in ch:
             zero_crossings = np.where(np.diff(np.sign(sig)))[0]
             features[f"{ch}_zeroCrossings"] = len(zero_crossings)
 
@@ -1025,25 +1172,26 @@ def extract_features_from_window(window, emg_channels, acc_channels):
     # ACC features
     for ch in acc_channels:
         sig = window[ch].values
-        features[f"{ch}_mean"] = np.mean(sig)
-        features[f"{ch}_std"] = np.std(sig)
-        features[f"{ch}_max"] = np.max(sig)
-        features[f"{ch}_min"] = np.min(sig)
-        features[f"{ch}_range"] = (np.max(sig) - np.min(sig))
+        features[f"{ch}_rms"] = np.sqrt(np.mean(sig**2)) # rms of window
+        features[f"{ch}_mean"] = np.mean(sig) # mean
+        features[f"{ch}_std"] = np.std(sig) # std
+        features[f"{ch}_max"] = np.max(sig) # max
+        features[f"{ch}_min"] = np.min(sig) #min
+        features[f"{ch}_range"] = (np.max(sig) - np.min(sig)) # range between min and max value
 
         mean = np.mean(sig)
         if mean != 0:
-            features[f"{ch}_coefVar"] = np.std(sig) / np.mean(sig)
+            features[f"{ch}_coefVar"] = np.std(sig) / np.mean(sig) # coefVar if mean is not zero
 
         # PSD
-        freqs, psd = welch(sig, fs=1000, nperseg=len(sig))
+        freqs, psd = welch(sig, fs=1000, nperseg=len(sig))   # getting out freqs and corresponding psd
 
         features[f"{ch}_psd_peakfreq"] = freqs[np.argmax(psd)] # most dominant frequency
-        features[f"{ch}_psd_power_1_5Hz"] = np.sum(psd[(freqs >= 1) & (freqs <= 5)])
-        features[f"{ch}_psd_power_10_20Hz"] = np.sum(psd[(freqs >= 10) & (freqs <= 20)])
+        features[f"{ch}_psd_power_2_5Hz"] = np.sum(psd[(freqs >= 2) & (freqs <= 5)]) # power in 2-5Hz range
+        features[f"{ch}_psd_power_8_20Hz"] = np.sum(psd[(freqs >= 8) & (freqs <= 10)])  # power in 8-20Hz range
 
-        low = features[f"{ch}_psd_power_1_5Hz"]
-        high = features[f"{ch}_psd_power_10_20Hz"]
+        low = features[f"{ch}_psd_power_2_5Hz"]
+        high = features[f"{ch}_psd_power_8_20Hz"]
         features[f"{ch}_psd_power_ratio_high_low"] = high / (low + 1e-6) # ratio of high/low power
 
 
