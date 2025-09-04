@@ -10,7 +10,7 @@ from matplotlib.lines import lineStyles
 from scipy.signal import butter, sosfiltfilt
 from scipy.stats import zscore
 from combined_analysis_bachelor.code.functions_for_pipeline import get_ch_indices, plot_channel_overview, normalize_emg, notched, \
-    notched_and_filtered, create_df, envelope, rectify
+    filtered_and_notched, create_df, envelope, rectify
 import matplotlib
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
@@ -20,8 +20,8 @@ base_mini_big = mne.io.read_raw_ant("C:/Users/User/Documents/bachelorarbeit/data
 onsets = base_mini_big.annotations.onset
 onsets = np.insert(onsets,0,0)
 
-custom_order_names = ["BIP7", "BIP12"]
-EMG = ["BIP7", "BIP12"]
+custom_order_names = ["BIP7",] #"BIP12"]
+EMG = ["BIP7", ]#"BIP12"]
 ACC = ["BIP6", "BIP1", "BIP2", "BIP3", "BIP4", "BIP5"]
 
 location_dict = {"BIP7":"right forearm",
@@ -39,7 +39,7 @@ data, times = base_mini_big[custom_order_names, : ]
 data = data * 1e6
 
 raw_df = create_df(data, custom_order_names, times)
-filtered_df = notched_and_filtered(raw_df, ACC, EMG, [1,20], [20,450])
+filtered_df = filtered_and_notched(raw_df, ACC, EMG, [1,20], [20,450], sf=1000)
 
 recordings = []
 for i in range(len(onsets)):
@@ -57,14 +57,21 @@ big_moves = recordings[2]
 rec_dfs = [baseline, small_moves, big_moves]
 rec_dfs_names = ["rest", "small moves", "bigger moves"]
 
-plt.figure()
-plt.plot(baseline["Time (s)"], baseline["BIP7"])
-plt.show()
+#plt.figure()
+#plt.plot(baseline["Time (s)"], baseline["BIP7"])
+#plt.show()
 
 melted_dfs = []
 for df in rec_dfs:
     df_melted = df.melt(id_vars='Time (s)', var_name='Channel', value_name='Amplitude')
     melted_dfs.append(df_melted)
+
+
+from my_utils import find_paths as find_path
+
+## save for thesis! ##
+fig_path = find_path.get_onedrive_path(folder="figures")
+saving_path = f"{fig_path}/mix_EMG_ACC_figures/histplot_amp_vals.svg"
 
 
 def plot_recording_histograms(rec_melted_dfs, location):
@@ -74,25 +81,37 @@ def plot_recording_histograms(rec_melted_dfs, location):
         df_copy['Location'] = df_copy['Channel'].map(location_dict)
         dfs_with_location.append(df_copy)
 
-    fig, axs = plt.subplots(1, 3, figsize=(14, 6), sharey=True)
+    fig, axs = plt.subplots(1, 3, figsize=(12, 5), sharey=True)
     for i, (ax, df) in enumerate(zip(axs, dfs_with_location)):
 
         g = sns.histplot(
             data=df,
             x="Amplitude",
-            hue="Location",
+            #hue="Location",
             bins=100,
             kde=False,
             ax=axs[i],
-            element="step"
+            element="step",
+            label="M. brachioradialis",
+            color="darkgray"
         )
 
         axs[i].set_title(f"{rec_dfs_names[i]}")
-        axs[i].set_xlabel("EMG-values (V)")
+        #axs[i].set_xlabel("EMG-values (V)")
         axs[i].set_ylabel("Frequency")
-        axs[i].tick_params(axis='x', rotation=45)
+        axs[i].tick_params(axis="x")
+        axs[i].set_xticks([-500, 0 ,500])
+        axs[i].set_xticklabels([])
+        axs[0].set_yticks([0, 1000, 2000, 3000])
+        axs[0].set_yticklabels([])
+        for a in fig.axes:
+                for sp in a.spines.values():
+                    sp.set_linewidth(0.5)
 
+    plt.legend(frameon=False)
     plt.tight_layout()
-    plt.show()
+    #plt.show()
+    plt.savefig(saving_path, dpi=300)
+
 
 plot_recording_histograms(melted_dfs, rec_dfs_names)
