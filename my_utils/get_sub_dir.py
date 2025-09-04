@@ -1,6 +1,6 @@
 import numpy as np
 import os
-from utils.find_paths import get_onedrive_path
+from my_utils.find_paths import get_onedrive_path
 
 
 def get_sub_folder_dir(sub, data_subfolder: str, dType="emg_acc" ):
