@@ -1,0 +1,17 @@
+{
+  "Version-1": {
+    "subject_id": "sub-02",
+    "data_types": ["source_data"],
+    "setups": ["MED", "NO_MED"],
+    "conditions": {
+      "MED": ["Move", "Rest"],
+      "NO_MED": ["Move", "Rest"]
+    },
+    "time_points": [-1, 1, 2, 3, 4, 5, 6, 7],
+    "file_format": ".lvm",
+    "meg_components": ["X", "Y", "Z"],
+    "channels_per_component": 20,
+    "filename_pattern": "sub02-{setup}-{condition}_{time}.lvm",
+    "data_path": "source_data/sub-02/plfp65"
+  }
+}

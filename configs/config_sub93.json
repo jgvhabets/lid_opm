@@ -1,0 +1,16 @@
+{
+  "subject_id": "sub-91",
+  "meg_channels": {
+    "FL30": "00:01-BZ_OL",
+    "FL21": "00:02-BZ_OL", 
+    "FL20": "00:03-BZ_OL",
+    "FL23": "00:04-BZ_OL",
+    "FL36": "00:05-BZ_OL",
+    "FL35": "00:06-BZ_OL",
+    "FL34": "00:07-BZ_OL",
+    "FL84": "00:08-BZ_OL"
+  },
+  "trigger_channels": {
+    "trigger1": "Input-1"
+  }
+}
