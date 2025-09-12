@@ -3,9 +3,9 @@
   "experiment_duration": 120,
   "arrow_size": 150,
   "n_trials": 100,
-  "go_proportion": 0.7,
+  "go_proportion": 0.0,
   "nogo_proportion": 0.0,
-  "abort_proportion": 0.3,
+  "abort_proportion": 1.0,
   "iti_mean": 2.5,
   "iti_jitter": 0.5,
   "screen_width": 800,
@@ -16,7 +16,9 @@
   "nogo_stimulus_color": [255, 0, 0],
   "stimulus_duration": 1.0,
   "abort_go_duration": 0.25,
-  "abort_step_size": 0.05,
+  "ADAPT_ABORT_TIME": true,
+  "check_correct_dtype": "keys",
+  "abort_step_size": 0.1,
   "response_keys": ["space"],
   "log_file": "results.csv"
 }
