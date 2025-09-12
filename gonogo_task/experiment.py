@@ -53,7 +53,7 @@ def waiting_screen(screen, clock, cfg):
         clock.tick(30)
 
 
-def run_experiment(screen, cfg, clock, outlet=None):
+def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
     """
     Run experiment, go vs no-go, vs go-abort.
     including a dynamic adjustment of the go-abort time,
@@ -96,15 +96,17 @@ def run_experiment(screen, cfg, clock, outlet=None):
         send_marker(outlet, f"TRIAL_START_{t+1}_{trial_type}")
 
         trial_data = run_trial(screen, trial_type, cfg, clock, outlet,
-                               abort_go_duration=current_abort_duration)
+                               abort_go_duration=current_abort_duration,
+                               verbose=verbose,)
         trial_data["trial"] = t + 1
         trial_data["timestamp"] = time.time() - exp_start
         results.append(trial_data)
 
         # --- adaptive staircase for abort ---
         if trial_type == "abort" and cfg['ADAPT_ABORT_TIME']:
-            print(f'abort correct?\t{trial_data["CORRECT_ABORT"]}')
-            print(f'current time: {current_abort_duration}')
+            if verbose:
+                print(f'abort correct?\t{trial_data["CORRECT_ABORT"]}')
+                print(f'current time: {current_abort_duration}')
             if trial_data["CORRECT_ABORT"]:
                 current_abort_duration -= cfg["abort_step_size"]
             else:
