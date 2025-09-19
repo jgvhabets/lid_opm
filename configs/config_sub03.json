@@ -1,0 +1,31 @@
+{
+  "subject_id": "sub-03",
+  "rec_location": "PTB",
+  "meg_file_ext": ".lvm",
+  "rec_date": "18-09-2025",
+  "ldopa_intake_time": "10:47",
+  "meg_sfreq": 750,
+  "meg_sensors": {
+    "15": "A1",
+    "28": "A3", 
+    "27": "A4",
+    "29": "A6",
+    "42": "A8",
+    "41": "B1",
+    "40": "B3",
+    "43": "B4",
+    "54": "B5",
+    "53": "B7",
+    "55": "B8",
+    "64": "C1",
+    "63": "C3",
+    "62": "C4"
+  },
+  "meg_loc_refsystem": "rp-lp-na",
+  "xyz_RP": [61.9512, 10.1652,-32.1965],
+  "xyz_LP": [-63.6857, 5.4228,-26.7293],
+  "xyz_NA": [0.3577, 104.1570,10.8473],
+  "trigger_channels": {
+    "trigger1": "Input-1"
+  }
+}

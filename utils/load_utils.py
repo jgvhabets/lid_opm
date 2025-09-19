@@ -6,6 +6,8 @@
 import json
 import os
 from typing import Dict, Any
+from pandas import read_csv, read_excel
+
 
 
 def get_onedrive_path(folder: str = 'project',):
@@ -34,7 +36,6 @@ def get_onedrive_path(folder: str = 'project',):
     # path is now Users/username
     onedrive_dirs = [f for f in os.listdir(path)
                      if 'charit' in f.lower()]
-    print(onedrive_dirs)
 
     for dir in onedrive_dirs:
 
@@ -45,8 +46,6 @@ def get_onedrive_path(folder: str = 'project',):
 
         
     project_path = os.path.join(path, project_directory, project_folder)
-
-    print(f'project folder found: {project_path}')
 
     
     if folder == 'project': return project_path
@@ -79,8 +78,20 @@ def load_subject_config(subject_id: str, config_dir: str = '../configs',) -> Dic
     except json.JSONDecodeError as e:
         raise json.JSONDecodeError(f"Invalid JSON in config file {config_file}: {e}")
     
-    
     return config
+
+
+def get_sub_rec_metainfo(config_sub):
+
+    metainfo = read_excel(
+        os.path.join(get_onedrive_path('source_data'),
+                     config_sub["subject_id"],
+                     f'rec_admin_{config_sub["subject_id"]}.xlsx'),
+        header=0, index_col=0,
+    )
+    
+    return metainfo
+
 
 
 def load_preproc_config(version: str, config_dir: str = '../configs',) -> Dict[str, Any]:
@@ -97,6 +108,5 @@ def load_preproc_config(version: str, config_dir: str = '../configs',) -> Dict[s
             config = json.load(f)
     except json.JSONDecodeError as e:
         raise json.JSONDecodeError(f"Invalid JSON in config file {config_file}: {e}")
-    
     
     return config
