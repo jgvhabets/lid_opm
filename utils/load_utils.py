@@ -1,5 +1,6 @@
 """
-
+Contains general helper functions for loading of files,
+meta-info, and defining common path structures
 """
 
 # import

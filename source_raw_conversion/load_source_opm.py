@@ -8,13 +8,14 @@ import mne
 from utils.load_utils import get_onedrive_path
 
 
-def extract_opm_sourcedata(sub_config, ACQ, TASK):
+def extract_opm_sourcedata(sub_config, ACQ, TASK,
+                           STORE_TRIGGER_TIMES=True,):
 
     SUB = sub_config["subject_id"][-2:]
 
     # define paths
     sub_opm_path = os.path.join(get_onedrive_path('source_data'),
-                               f'sub-{SUB}', 'opm')
+                                f'sub-{SUB}', 'opm')
     opm_folders = os.listdir(sub_opm_path)  # get available files
     
     # get meg file for task and acquisition
@@ -26,6 +27,7 @@ def extract_opm_sourcedata(sub_config, ACQ, TASK):
     fpath = os.path.join(sub_opm_path, sel_folder, sel_file)
 
     if sub_config['rec_location'] == 'PTB':
+        # use PTB system specifics
         lvm_df = read_lvm_to_df(meg_file_path=fpath)
 
         (
@@ -35,6 +37,21 @@ def extract_opm_sourcedata(sub_config, ACQ, TASK):
             meg_chnames,
             meg_trigger
         ) = get_data_from_lvm_df(lvm_df=lvm_df)
+    
+    ### store trigger times in meg-timing
+    if STORE_TRIGGER_TIMES:
+        fpath = os.path.join(get_onedrive_path('raw_data'),
+                             f'sub-{SUB}', 'opm',
+                             f'sub-{SUB}_{TASK}_{ACQ}_opm_triggertimes.npy')
+        # define threshold as 50% of max
+        thr = np.nanmax(meg_trigger)
+        # get indices and times of trigger presses
+        trigger_idx = np.where(np.diff(meg_trigger) > (.5 * thr))[0]
+        trigger_times = np.array(megtimes[trigger_idx])
+        np.save(fpath, trigger_times)
+        print(f'stored opm TRIGGERS in {fpath}')
+
+
 
     return megtimes, megdata, meg_sfreq, meg_chnames, meg_trigger
 
@@ -64,7 +81,44 @@ def read_lvm_to_df(meg_file_path):
     return df
 
 
+def find_megtrigger_in_AI(megdata, megchnames, SYSTEM='PTB',):
+    """
+    finds trigger channel in MEG data based on largest max value
+    in AI (analog input) channels, returns trigger timeseries
+    """
+    # PTB and FieldLine systems have different analog codes in chnames
+    AI_CODE = {'PTB': 'AI', 'FL': None}
+
+    # find trigger AI (analog input) channel based on largest max
+    trigger_ai_idx = np.argmax(
+        [np.nanmax(megdata[:, i]) for i, ch in enumerate(megchnames)
+        if ch.startswith(AI_CODE[SYSTEM])]
+    )
+    # find matching chname
+    trigger_chname = [
+        ch for ch in megchnames if ch.startswith(AI_CODE[SYSTEM])
+    ][trigger_ai_idx]
+    # find index in all data
+    trigger_idx_global = np.where(
+        [ch == trigger_chname for ch in megchnames]
+    )[0][0]
+
+    # assign trigger timeseries
+    trigger_series = megdata[:, trigger_idx_global]
+
+    return trigger_series
+
+
+
 def get_data_from_lvm_df(lvm_df):
+    """
+    For lvm file, channels contain 64 sensors, X1 - X64, Y1 - Y64,
+    Z1 - Z64, -> all meg channels;
+    D1 - D10: all empty;
+    AI 1 - AI 15: analog input, contains trigger channel;
+    MUX_Counter1/2:
+    
+    """
     # find relevant rows in csv file
 
     for i in np.arange(lvm_df.shape[0]):
@@ -92,11 +146,15 @@ def get_data_from_lvm_df(lvm_df):
         # select channels present for this sub (based on config)
         temp_values.append(values)
 
-        # extract trigger signal
-        trigger_ch = None
-
+    
     meg_data = np.array(temp_values)
     times = np.array(temp_times)
+
+    # extract trigger signal
+    trigger_ch = find_megtrigger_in_AI(megdata=meg_data, megchnames=ch_names,
+                                       SYSTEM='PTB',)
+
+
 
     return MEG_SFREQ, times, meg_data, ch_names, trigger_ch
 

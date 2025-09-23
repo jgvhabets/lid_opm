@@ -6,10 +6,11 @@ Exploring cortical patterns of levodopa induced dyskinesia using OPM-MEG.
 This branch will have all of the code relating to the EMG-data collection, EMG-Analysis and also code for the Accelerometer. Excited to get started!
 
 # Dependencies
-`conda create -n lid_opm python numpy pandas scipy scikit-learn jupyter matplotlib`
-additional packages:
-`pip install mne h5io pymatreader`
-`pip install pygame pylsl`  # for go/no-go task
+`conda create --name ENVNAME --file lid_opm_environment.yml` (gonogo)
+`conda create --name ENVNAME --file lidopm_env_22092025.yml` (preprocess)
+
+(export with command: `conda env export > lidopm_env_xxxx.yml`)
+
 
 package version:
 - Python sys 3.12.7
