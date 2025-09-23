@@ -6,6 +6,8 @@ import mne
 
 # load custom
 from utils.load_utils import get_onedrive_path
+from source_raw_conversion.time_syncing import cut_data_to_task_timing
+
 
 
 def extract_opm_sourcedata(sub_config, ACQ, TASK,
@@ -50,7 +52,6 @@ def extract_opm_sourcedata(sub_config, ACQ, TASK,
         trigger_times = np.array(megtimes[trigger_idx])
         np.save(fpath, trigger_times)
         print(f'stored opm TRIGGERS in {fpath}')
-
 
 
     return megtimes, megdata, meg_sfreq, meg_chnames, meg_trigger
@@ -194,17 +195,10 @@ def select_and_store_axis_data(
     ax_data = ax_data[:, axis_ch_order]
 
 
-    # cut data based on task beginning and end
-    # get real-task-timings
-    rec_sel = [TASK in n.lower() and ACQ in n.lower()
-               for n in sub_meta['rec_name']]
-    rec_start_end = sub_meta[rec_sel][['real_task_start', 'real_task_end']].values.ravel()
-
-    i_start = (rec_start_end[0].minute * 60 + rec_start_end[0].second) * MEG_SFREQ
-    i_end = (rec_start_end[1].minute * 60 + rec_start_end[1].second) * MEG_SFREQ
-
-    ax_data = ax_data[i_start:i_end, :]
-    meg_times = meg_times[i_start:i_end]
+    # cut data based on task beginning and end to get real-task-timings
+    ax_data, meg_times = cut_data_to_task_timing(ax_data, meg_times, sub_meta,
+                                                 TASK=TASK, ACQ=ACQ, SFREQ=MEG_SFREQ,
+                                                 ASSUME_TSTART_OPMt0=True,)
 
     if STORE:
         np.save(os.path.join(path, fname), ax_data, allow_pickle=True)
@@ -213,6 +207,9 @@ def select_and_store_axis_data(
 
 
     return ax_data, meg_times
+
+
+
 
 
 def load_sensor_coords(sub,):

@@ -27,5 +27,25 @@
   "xyz_NA": [0.3577, 104.1570,10.8473],
   "trigger_channels": {
     "trigger1": "Input-1"
+  },
+  "antneuro_chs": {
+    "1": "acc_leftfoot_z",
+    "2": "acc_leftfoot_y",
+    "3": "acc_leftfoot_x",
+    "4": "acc_rightfoot_z",
+    "5": "acc_rightfoot_y",
+    "6": "acc_rightfoot_x",
+    "7": "acc_righthand_z",
+    "8": "acc_righthand_y",
+    "9": "acc_righthand_x",
+    "10": "acc_lefthand_z",
+    "11": "acc_lefthand_y",
+    "12": "acc_lefthand_x",
+    "13": "emg_rightdeltoid",
+    "14": "emg_rightforearm",
+    "15": "emg_rightleg",
+    "16": "emg_leftdeltoid",
+    "17": "emg_leftforearm",
+    "18": "emg_leftleg"
   }
 }

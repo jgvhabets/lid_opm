@@ -103,7 +103,46 @@ def convert_lsltimes_to_megtimes_sec(
                             for t in lsldat_rel_times_sec]  # lsl-timestamps rel to trigger0 lsl in seconds
 
     # add n-seconds of first trigger in opm timestamps (sets t=0 to start opm recording)
-    lsl_tstamps_in_megtime_sec = [t + meg_time_trigger0
-                                for t in lsldat_rel_times_sec]
+    lsl_tstamps_in_megtime_sec = np.array(
+        [t + meg_time_trigger0 for t in lsldat_rel_times_sec]
+    )
     
     return lsl_tstamps_in_megtime_sec
+
+
+def cut_data_to_task_timing(
+    tempdata, temptimes, sub_meta,
+    TASK: str, ACQ: str, SFREQ: int,
+    ASSUME_TSTART_OPMt0: bool = False,
+):
+    """
+    cut data based on task beginning and end
+    get real-task-timings
+
+    Input:
+    - tempdata: 2d array [samples, channels]
+    - temptimes: 1d array [samples,], time in seconds
+    - sub_meta: meta info file
+    - TASK, ACQ, SFREQ ...
+    - ASSUME_TSTART_OPMt0: given times have 0 at
+        start of OPM data, no index/time search necessary
+    """
+    rec_sel = [TASK in n.lower() and ACQ in n.lower()
+               for n in sub_meta['rec_name']]
+    rec_start_end = sub_meta[rec_sel][['real_task_start', 'real_task_end']].values.ravel()
+
+    if ASSUME_TSTART_OPMt0:
+        i_start = (rec_start_end[0].minute * 60 + rec_start_end[0].second) * SFREQ
+        i_end = (rec_start_end[1].minute * 60 + rec_start_end[1].second) * SFREQ
+
+    else:
+        sec_start = rec_start_end[0].minute * 60 + rec_start_end[0].second
+        sec_end = rec_start_end[1].minute * 60 + rec_start_end[1].second
+        # find indices
+        i_start = np.argmin(abs(temptimes - sec_start))
+        i_end = np.argmin(abs(temptimes - sec_end))
+        
+    tempdata = tempdata[i_start:i_end, :]
+    temptimes = temptimes[i_start:i_end]
+
+    return tempdata, temptimes
