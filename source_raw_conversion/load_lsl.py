@@ -112,45 +112,66 @@ def convert_source_lsl_to_raw(SUB, TASK, ACQ):
         mrk_stream=lslmrk, lsl_header=fileheader,
         meg_trigger_diffs=meg_trigger_diffs
     )
-    # TODO: create l-dopa time based on lsl_clock_t0
 
 
     ### LSL AntNeuro Data
-    auxdat, auxtimes, aux_chnames, aux_sfreq = convert_antneuro_stream(
+    (auxdat, aux_chnames, aux_sfreq) = convert_antneuro_stream(
         lsldat, lsl_t_trigger0, meg_time_trigger0,
-        ACQ, TASK, sub_meta_info, sub_config
+        SUB, ACQ, TASK, sub_meta_info, sub_config,
+        lsl_clock_t0=lsl_clock_t0,
     )
-    # TODO: storing of trimmed, alligned raw data
 
 
     ### LSL Pygame Data
-    # convert times
-    pyg_times = sync.convert_lsltimes_to_megtimes_sec(
-        lsltimestamps=lslpyg['time_stamps'],
-        lsl_t_trigger0=lsl_t_trigger0,
-        meg_time_trigger0=meg_time_trigger0,
-    )
-    pyg_timings = extract_game_markers(
-        pyg_data=lslpyg['time_series'],
-        pyg_times=pyg_times,
-        SUB=SUB, ACQ=ACQ, TASK=TASK,
-    )
+    if TASK != 'rest':
+        pyg_timings = extract_game_markers(
+            pyg_stream=lslpyg,
+            lsl_t_trigger0=lsl_t_trigger0,
+            meg_time_trigger0=meg_time_trigger0,
+            SUB=SUB, ACQ=ACQ, TASK=TASK,
+        )
+    else:
+        pyg_timings = None
 
 
-    return auxdat, auxtimes, aux_chnames, aux_sfreq, pyg_timings
+    return auxdat, aux_chnames, aux_sfreq, pyg_timings
 
 
 
 def convert_antneuro_stream(lsldat, lsl_t_trigger0, meg_t_trigger0,
-                            ACQ, TASK, sub_meta_info, sub_config,):
+                            SUB, ACQ, TASK, sub_meta_info, sub_config,
+                            lsl_clock_t0,):
+    
+    # try to load ant-neur values
+    fpath = os.path.join(get_onedrive_path('raw_data'), f'sub-{SUB}', 'emgacc')
+    fname = f'rawAligned_sub-{SUB}_{TASK}_{ACQ}.npy'
+    jsonname = f'chInfo_sub-{SUB}_{TASK}_{ACQ}.json'
+    if fname in os.listdir(fpath):
+        auxdat = np.load(os.path.join(fpath, fname))
+    
+        if jsonname in os.listdir(fpath):
+            with open(os.path.join(fpath, jsonname), 'r') as f:
+                auxinfo = json.load(f)
+            
+            chnames = auxinfo['chnames']
+            sfreq = auxinfo['sfreq']
+
+        else:
+            raise ValueError(f'no auxInfo for {SUB}_{TASK}_{ACQ}')
+    
+        return auxdat, chnames, sfreq
+    
+    
     # convert lsl times into meg-time alligning
-    an_times_inmeg = sync.convert_lsltimes_to_megtimes_sec(
+    an_times_inmeg, clocktime_megt0 = sync.convert_lsltimes_to_megtimes_sec(
         lsltimestamps=lsldat['time_stamps'],
         lsl_t_trigger0=lsl_t_trigger0,
         meg_time_trigger0=meg_t_trigger0,
+        lsl_clock_t0=lsl_clock_t0
     )
+
     # get data from lsl data stream
-    AN_SFREQ = int(float(lsldat['info']['nominal_srate'][0]))
+    aux_sfreq = int(float(lsldat['info']['nominal_srate'][0]))
     an_channeldicts_list = lsldat['info']['desc'][0]['channels'][0]['channel']
     ch_aux_sel = [chdict['type'][0] == 'aux' for chdict in an_channeldicts_list]
     aux_chnames = list(sub_config["antneuro_chs"].values())
@@ -168,14 +189,24 @@ def convert_antneuro_stream(lsldat, lsl_t_trigger0, meg_t_trigger0,
         sub_meta=sub_meta_info,
         TASK=TASK,
         ACQ=ACQ,
-        SFREQ=AN_SFREQ,
+        SFREQ=aux_sfreq,
     )
+    # merge aligned time and data
+    auxdat = np.concatenate([auxtimes[:, np.newaxis], auxdat], axis=1)
+    aux_chnames = ['aligned_time',] + aux_chnames
 
-    return auxdat, auxtimes, aux_chnames, AN_SFREQ
+    ## storing
+    auxdat = np.save(os.path.join(fpath, fname), auxdat)
+    auxinfo = {'chnames': aux_chnames, 'sfreq': aux_sfreq, 'clocktime_t0': str(clocktime_megt0)}
+    with open(os.path.join(fpath, jsonname), 'w') as f:
+        json.dump(auxinfo, f)
+        
+
+    return auxdat, aux_chnames, aux_sfreq
 
 
-def extract_game_markers(pyg_data, pyg_times,
-                         SUB, ACQ, TASK,):
+def extract_game_markers(SUB, ACQ, TASK, pyg_stream=None,
+                         lsl_t_trigger0=None, meg_time_trigger0=None,):
     """
     Input:
     - pyg_data: LSL stream with (n_samples)
@@ -184,6 +215,7 @@ def extract_game_markers(pyg_data, pyg_times,
     Returns:
     - 
     """
+    ### load data if available
     fpath = os.path.join(get_onedrive_path('raw_data'), f'sub-{SUB}')
     fname = f'trialtimings_sub-{SUB}_{TASK}_{ACQ}.json'
     
@@ -194,7 +226,16 @@ def extract_game_markers(pyg_data, pyg_times,
 
         return game_timings
 
-    # create dict w timings if not existing yet
+    ### create dict w timings if not existing yet
+    
+    # convert lsl times to opm times
+    pyg_times, _ = sync.convert_lsltimes_to_megtimes_sec(
+        lsltimestamps=pyg_stream['time_stamps'],
+        lsl_t_trigger0=lsl_t_trigger0,
+        meg_time_trigger0=meg_time_trigger0,
+    )
+    
+    
     game_timings = {
         "go_left": {"start": [], "end": [], "trial_n": []},
         "go_right": {"start": [], "end": [], "trial_n": []},
@@ -206,7 +247,7 @@ def extract_game_markers(pyg_data, pyg_times,
 
     ACTIVE_TYPE = None  # default start
 
-    for m, t in zip(pyg_data, pyg_times):
+    for m, t in zip(pyg_stream['time_series'], pyg_times):
         
         m = m[0]
         # take trial start

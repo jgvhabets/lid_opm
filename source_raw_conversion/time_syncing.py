@@ -76,7 +76,7 @@ def compare_triggers(mrk_stream, lsl_header, meg_trigger_diffs):
 
     # get differences in trigger timing meg vs antneuro
     sync_diffs = [abs(an_trigger_diffs[i] - meg_trigger_diffs[i])
-                for i in np.arange(len(an_trigger_diffs))]
+                  for i in np.arange(len(an_trigger_diffs))]
     
     print(f'### Time differences (in seconds) of sync triggers'
           f' AntNeuro vs OPM: {[t.total_seconds() for t in sync_diffs]}')
@@ -86,7 +86,13 @@ def compare_triggers(mrk_stream, lsl_header, meg_trigger_diffs):
 
 def convert_lsltimes_to_megtimes_sec(
     lsltimestamps, lsl_t_trigger0, meg_time_trigger0,
+    lsl_clock_t0=None,
 ):
+    """
+    Returns:
+    - converted lsl timestamp, relative to t=0 -> opm-start
+    - clocktime of opm-start t=0
+    """
     # get timestamps for antneuro data timestamps
     lsldat_dt_times  = [
         dt.datetime.fromtimestamp(t) for t in lsltimestamps
@@ -106,8 +112,15 @@ def convert_lsltimes_to_megtimes_sec(
     lsl_tstamps_in_megtime_sec = np.array(
         [t + meg_time_trigger0 for t in lsldat_rel_times_sec]
     )
+
+    ### add clocktime (coming from LSL) of opm t=0 (for later dopa_time)
+    if lsl_clock_t0:
+        clocktime_trigger0 = lsl_clock_t0 + lsl_start_trigger0_gap
+        clocktime_opm_t0 = clocktime_trigger0 - dt.timedelta(seconds=meg_time_trigger0)
+    else:
+        clocktime_opm_t0 = None
     
-    return lsl_tstamps_in_megtime_sec
+    return lsl_tstamps_in_megtime_sec, clocktime_opm_t0
 
 
 def cut_data_to_task_timing(
