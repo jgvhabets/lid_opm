@@ -4,12 +4,14 @@ Signal pre-processing functions for OPM and MEG, ACC
 
 
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import product, compress
 from scipy.signal import butter, filtfilt, iirnotch
+import datetime as dt 
 
-
+import source_raw_conversion.load_source_opm as source_opm
 from source_raw_conversion.load_lsl import convert_source_lsl_to_raw
+from utils import load_utils
 
 @dataclass()
 class rawData_singleRec:
@@ -24,18 +26,21 @@ class rawData_singleRec:
     acq: str
     INCL_AUX: bool = True
     INCL_OPM: bool = False
+    OPM_AXES_INCL: list = field(default_factory=lambda: ['Z',])
 
     def __post_init__(self,):
 
         if self.INCL_AUX:
             # load aux
+            # dont make aux_dat a class attribute to prevent storing of double data
             (
-                self.auxdat, self.aux_chnames,
+                temp_auxdat, self.aux_chnames,
                 self.aux_sfreq, self.tasktimings
             ) = convert_source_lsl_to_raw(self.sub, self.task, self.acq)
 
-            self.times = self.auxdat[:, 0]
+            self.times = temp_auxdat[:, 0]
             
+            # add indices from task stimulations, including 1-sec prior and 1-sec post!!
             if self.task != 'rest':
                 self.task_epochs = add_task_epoch_idx(self=self)
             
@@ -44,16 +49,17 @@ class rawData_singleRec:
             ### preprocess acc
             # bandpass all acc channels
             for i_ch in np.where(['acc' in c for c in self.aux_chnames])[0]:
-                sig = self.auxdat[:, i_ch].copy()
-                sig = apply_butter_filter(sig, sfreq=self.aux_sfreq, type='band',
+                sig = temp_auxdat[:, i_ch].copy()
+                sig = apply_filter(sig, sfreq=self.aux_sfreq, type='band',
                                           low_f=2, high_f=20,)
-                self.auxdat[:, i_ch] = sig
+                temp_auxdat[:, i_ch] = sig
 
             # get sign vector magn for every extremity
+            # TODO: consider to use only dominant-acc-axis, without absolute values
             for side, extr in product(['left', 'right'], ['hand', 'foot']):
                 triacc = [all(['acc' in c, side in c, extr in c])
                           for c in self.aux_chnames]
-                triacc = self.auxdat[:, triacc]
+                triacc = temp_auxdat[:, triacc]
                 # calc svm
                 svm = get_signal_vector_magn(triacc)
 
@@ -68,13 +74,13 @@ class rawData_singleRec:
                 setattr(
                     self,
                     name.replace('emg', 'emg_env'),
-                    get_emg_envelop(self.auxdat[:, i_ch], sfreq=self.aux_sfreq)
+                    get_emg_envelop(temp_auxdat[:, i_ch], sfreq=self.aux_sfreq)
                 )
                 self.rel_aux_sigs.append(name.replace('emg', 'emg_env'))
                 setattr(
                     self,
                     name.replace('emg', 'emg_tkeo'),
-                    get_emg_tkeo(self.auxdat[:, i_ch], sfreq=self.aux_sfreq,)
+                    get_emg_tkeo(temp_auxdat[:, i_ch], sfreq=self.aux_sfreq,)
                 )
                 self.rel_aux_sigs.append(name.replace('emg', 'emg_tkeo'))
             
@@ -83,8 +89,37 @@ class rawData_singleRec:
                 sig = getattr(self, ft)
                 sig = (sig - np.mean(sig)) / np.std(sig)
                 setattr(self, ft, sig)
-            
 
+        #####
+        if self.INCL_OPM:
+            self.sub_config = load_utils.load_subject_config(subject_id=self.sub,)
+
+            for ax in self.OPM_AXES_INCL:
+                axdata, axtimes = source_opm.select_and_store_axis_data(
+                    AX=ax, ACQ=self.acq, TASK=self.task,
+                    sub_config=self.sub_config, LOAD=True,
+                )
+                rawmne = source_opm.load_raw_opm_into_mne(
+                    meg_data=axdata, AX=ax, sub_config=self.sub_config,
+                )
+                self.opmrec_times = axtimes
+                setattr(self, f'OPM_{ax}', rawmne)
+
+                self.event_codes, self.event_arr = get_mne_event_array(self)
+
+
+def get_mne_event_array(self,):
+
+    event_codes = {key: i+1 for i, key in enumerate(self.task_epochs)}
+
+    event_lists = []  # to creat array afterwards [start_index, 0, event_code]
+    for e_key, e_idx in self.task_epochs.items():
+        for e_i in e_idx:
+            event_lists.append([e_i[0], 0, event_codes[e_key]])
+
+    event_arr = np.array(event_lists)
+
+    return event_codes, event_arr
 
 
 def add_task_epoch_idx(self,):

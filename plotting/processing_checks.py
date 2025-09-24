@@ -14,6 +14,8 @@ def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
     axes = axes.flatten()
     axestypes = []
 
+    EPOCH_SIZE = 3000  # sfreq = 1000 Hz; 1sec-pre, 1sec-task, 1-sec-post
+
     for i, (tasktype, epochtimes) in enumerate(recRaw.task_epochs.items()):
 
         gotype, side = tasktype.split('_')
@@ -21,14 +23,21 @@ def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
         
         side_sigs = [s for s in recRaw.rel_aux_sigs if side in s]
 
-        max_i1 = np.min([e[1]-e[0] for e in epochtimes])
-        if max_i1  > 3000: max_i1 = 3000
 
         for sig in side_sigs:
             epochs = []
             for i0, _ in epochtimes:
-                epochs.append(getattr(recRaw, sig)[i0:i0+max_i1])
-            epochs = np.array(epochs)
+                epochs.append(getattr(recRaw, sig)[i0:i0+EPOCH_SIZE])
+            # pad last broken epoch with zeros to enable 2d-array
+            try:
+                epochs = np.array(epochs)
+            except ValueError:
+                if any(np.array([len(e) for e in epochs]) < EPOCH_SIZE):
+                    i_short = np.argmin([len(e) for e in epochs])
+                    temp = np.zeros(EPOCH_SIZE)
+                    temp[:len(epochs[i_short])] = epochs[i_short]
+                    epochs[i_short] = temp
+                    epochs = np.array(epochs)
             meansig = np.nanmean(epochs, axis=0)
 
             axes[i].plot(meansig, label=sig.replace(f'_{side}', '_'),)
