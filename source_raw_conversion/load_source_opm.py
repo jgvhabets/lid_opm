@@ -298,11 +298,13 @@ def get_sensor_info(sub_config, STORE: bool = False):
     
 
 def load_raw_opm_into_mne(meg_data, sub_config,
-                          sfreq=None, ch_names=None, AX=None,):
+                          sfreq=None, ch_names=None, AX=None,
+                          LOC_METER_CONV=1000.0,):
     """
     requires availibilty of sensor coordniates in meters with
     nasion, peri-auricular left/right xyz in some coord system
     Input:
+    -LOC_METER_CONV: divide by 1 if already meters, divide by 1000 if mm given
     """
 
     sensor_reg = get_sensor_info(sub_config,)
@@ -325,7 +327,7 @@ def load_raw_opm_into_mne(meg_data, sub_config,
 
     ## MNE doesnt allow manual "MAG" position changing (bcs MEG usually doesnt need/allows this)
     # option 1: replace mag with eeg type
-    # ch_types = ["eeg"] * meg_data.shape[0]
+    # ch_types = ["eeg"] * meg_data.shape[0]  -> not best work-around
 
     info = mne.create_info(
         ch_names=ch_names,
@@ -340,15 +342,19 @@ def load_raw_opm_into_mne(meg_data, sub_config,
     for ch in info['chs']:
         name = ch['ch_name']
         if name in coords:
-            # set xyz
+            # set sensor locations-xyz
             pos = np.array(coords[name], dtype=float)
-            ch["loc"][:3] = pos
-            # include orientation
+            ch["loc"][:3] = pos  / LOC_METER_CONV
+            # include orientation-of-axes (xyz)
             sensor = name.split(AX)[0]
             i_sensor = np.where(geo_coord.index == int(sensor))[0][0]
             if AX == 'Z': i_orient = 1
             else: i_orient = 2
             ch["loc"][3:6] = geo_coord.iloc[i_sensor + i_orient].values
+            # TODO: add second orientation axis as [6:9]
+            # FOR NOW: fill with safe-zeros instead of nan's for hfc
+            ch["loc"][6:12] = np.nan_to_num(ch["loc"][6:12], nan=0.0)
+            # print(f'\t... ch: {name}, got "loc" info: {ch["loc"]}')
 
 
     ### create raw object

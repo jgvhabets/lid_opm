@@ -14,9 +14,9 @@ def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
     axes = axes.flatten()
     axestypes = []
 
-    EPOCH_SIZE = 3000  # sfreq = 1000 Hz; 1sec-pre, 1sec-task, 1-sec-post
+    EPOCH_SIZE = 3 * self.aux_sfreq  # sfreq = 1000 Hz; 1sec-pre, 1sec-task, 1-sec-post
 
-    for i, (tasktype, epochtimes) in enumerate(recRaw.task_epochs.items()):
+    for i, (tasktype, epochtimes) in enumerate(recRaw.aux_task_epochs.items()):
 
         gotype, side = tasktype.split('_')
         axestypes.append(gotype)

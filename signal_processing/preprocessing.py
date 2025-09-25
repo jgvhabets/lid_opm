@@ -9,6 +9,10 @@ from itertools import product, compress
 from scipy.signal import butter, filtfilt, iirnotch
 import datetime as dt 
 
+from mne.filter import filter_data, notch_filter
+from mne.preprocessing import ICA, compute_proj_hfc
+
+
 import source_raw_conversion.load_source_opm as source_opm
 from source_raw_conversion.load_lsl import convert_source_lsl_to_raw
 from utils import load_utils
@@ -27,8 +31,15 @@ class rawData_singleRec:
     INCL_AUX: bool = True
     INCL_OPM: bool = False
     OPM_AXES_INCL: list = field(default_factory=lambda: ['Z',])
+    OPM_PREPROC: dict = field(default_factory=lambda: {
+        'resample': True, 'bandpass': False, 'notch': False
+    })
+    CONFIG_VERSION: str = 'v1'
 
     def __post_init__(self,):
+        # load config for sub and general
+        self.sub_config = load_utils.load_subject_config(subject_id=self.sub,)
+        self.preproc_config = load_utils.load_preproc_config(version=self.CONFIG_VERSION,)
 
         if self.INCL_AUX:
             # load aux
@@ -37,13 +48,12 @@ class rawData_singleRec:
                 temp_auxdat, self.aux_chnames,
                 self.aux_sfreq, self.tasktimings
             ) = convert_source_lsl_to_raw(self.sub, self.task, self.acq)
-
-            self.times = temp_auxdat[:, 0]
+            self.auxtimes = temp_auxdat[:, 0]
             
             # add indices from task stimulations, including 1-sec prior and 1-sec post!!
-            if self.task != 'rest':
-                self.task_epochs = add_task_epoch_idx(self=self)
-            
+            self.aux_task_epochs = add_task_epoch_idx(
+                self=self, times_to_use=self.auxtimes, sfreq=self.aux_sfreq
+            )
             self.rel_aux_sigs = []  # storing naming of relevant attributes
 
             ### preprocess acc
@@ -62,7 +72,6 @@ class rawData_singleRec:
                 triacc = temp_auxdat[:, triacc]
                 # calc svm
                 svm = get_signal_vector_magn(triacc)
-
                 setattr(self, f'acc_svm_{side}{extr}', svm)
                 self.rel_aux_sigs.append(f'acc_svm_{side}{extr}')
 
@@ -71,12 +80,14 @@ class rawData_singleRec:
             self.emg_chnames = [c for c in self.aux_chnames if 'emg' in c.lower()]
             for i_ch in np.where(['emg' in c for c in self.aux_chnames])[0]:
                 name = self.aux_chnames[i_ch]
+                # get envelop
                 setattr(
                     self,
                     name.replace('emg', 'emg_env'),
                     get_emg_envelop(temp_auxdat[:, i_ch], sfreq=self.aux_sfreq)
                 )
                 self.rel_aux_sigs.append(name.replace('emg', 'emg_env'))
+                # get TKEO
                 setattr(
                     self,
                     name.replace('emg', 'emg_tkeo'),
@@ -92,8 +103,8 @@ class rawData_singleRec:
 
         #####
         if self.INCL_OPM:
-            self.sub_config = load_utils.load_subject_config(subject_id=self.sub,)
-
+            
+            # load data per opm axis
             for ax in self.OPM_AXES_INCL:
                 axdata, axtimes = source_opm.select_and_store_axis_data(
                     AX=ax, ACQ=self.acq, TASK=self.task,
@@ -102,18 +113,79 @@ class rawData_singleRec:
                 rawmne = source_opm.load_raw_opm_into_mne(
                     meg_data=axdata, AX=ax, sub_config=self.sub_config,
                 )
+                # currently one time axis for all opm axes
                 self.opmrec_times = axtimes
                 setattr(self, f'OPM_{ax}', rawmne)
 
+                # preprocess opm axis
+                preprocess_opm(self, axis=ax,)
+
+                self.opm_task_epochs = add_task_epoch_idx(
+                    self=self,
+                    times_to_use=getattr(self, f'OPM_{ax}').times,
+                    sfreq=getattr(self, f'OPM_{ax}').info['sfreq']
+                )
+                # create array to mark event epochs
                 self.event_codes, self.event_arr = get_mne_event_array(self)
+
+
+
+
+def preprocess_opm(self, axis,):
+    meg_info = getattr(self, f"OPM_{axis}").info
+
+    if self.OPM_PREPROC['resample']:
+        # resample
+        goal_fs = self.preproc_config["TARGET_SFREQ"]
+        if meg_info['sfreq'] <= goal_fs:
+            print(f'original sfreq {meg_info.info["sfreq"]} vs sfreq {goal_fs}')
+        else:
+            print(f'resample original sampling rate {meg_info["sfreq"]} to {goal_fs}')
+            setattr(
+                self,
+                f"OPM_{axis}",
+                getattr(self, f"OPM_{axis}").resample(goal_fs, verbose=False)
+            )
+    
+    if self.OPM_PREPROC['bandpass']:
+        temp_dat = getattr(self, f"OPM_{axis}").copy()
+        # Bandpass filter (1-100 Hz); use .filter() to remain Raw Mne Object
+        temp_dat = temp_dat.filter(
+            l_freq=self.preproc_config['BANDPASS_LOW'],
+            h_freq=self.preproc_config['BANDPASS_HIGH'], 
+            method='fir', verbose=False,
+        )  # sfreq=meg_dat.info['sfreq'], is given within Raw Object
+        setattr(self, f"OPM_{axis}", temp_dat)
+
+    if self.OPM_PREPROC['notch']:
+        # Apply notch filters (50 Hz and harmonics)
+        sfreq = meg_info['sfreq']
+        temp_dat = getattr(self, f"OPM_{axis}").get_data()
+        for freq in self.preproc_config['NOTCH_FREQS']:
+            temp_dat = notch_filter(
+                temp_dat, 
+                Fs=sfreq,  
+                freqs=freq,
+                verbose=False
+            )
+        getattr(self, f"OPM_{axis}")._data = temp_dat
+
+    if self.OPM_PREPROC['hfc']:
+        # Apply homogeneous field correction
+        proj_hfc = compute_proj_hfc(meg_info,
+                                    order=self.preproc_config['HFC_ORDER'])
+        # temp_dat = meg_dat.copy()
+        getattr(self, f"OPM_{axis}").add_proj(proj_hfc)
+        getattr(self, f"OPM_{axis}").apply_proj()
+
 
 
 def get_mne_event_array(self,):
 
-    event_codes = {key: i+1 for i, key in enumerate(self.task_epochs)}
+    event_codes = {key: i+1 for i, key in enumerate(self.opm_task_epochs)}
 
     event_lists = []  # to creat array afterwards [start_index, 0, event_code]
-    for e_key, e_idx in self.task_epochs.items():
+    for e_key, e_idx in self.opm_task_epochs.items():
         for e_i in e_idx:
             event_lists.append([e_i[0], 0, event_codes[e_key]])
 
@@ -122,7 +194,7 @@ def get_mne_event_array(self,):
     return event_codes, event_arr
 
 
-def add_task_epoch_idx(self,):
+def add_task_epoch_idx(self, times_to_use, sfreq):
     """
     takes one second before start and one second after end
     """
@@ -131,17 +203,30 @@ def add_task_epoch_idx(self,):
 
     task_epochs = {}
 
-    for task, timings in self.tasktimings.items():
+    # take extracted timings from behavioral task, for rest
+    # take every three-second window as an epoch
+    if self.task == 'rest':
+        task_dict = {'rest': {'start': [], 'end': []}}
+        # take every 3 sec window
+        for sec in np.arange(np.round(times_to_use[0]) + .5 + INCL_EDGE,  # add 1 for edge, half for rounding up
+                             np.round(times_to_use[-1] - INCL_EDGE),
+                             1+INCL_EDGE+INCL_EDGE):
+            task_dict['rest']['start'].append(sec)
+            task_dict['rest']['end'].append(sec + 1)
+    else:
+        task_dict = self.tasktimings
+
+    for task, timings in task_dict.items():
 
         task_epochs[task] = []
 
         for t0, t1 in zip(timings['start'], timings['end']):
 
-            i0 = np.argmin(abs(self.times - (t0 - INCL_EDGE)))
-            i1 = np.argmin(abs(self.times - (t1 + INCL_EDGE)))
+            i0 = np.argmin(abs(times_to_use - (t0 - INCL_EDGE)))
+            i1 = np.argmin(abs(times_to_use - (t1 + INCL_EDGE)))
 
             if i0 == i1: continue  # happened when task was incorrectly started before real start
-            if (i1 - i0) < (.8 + INCL_EDGE + INCL_EDGE) * self.aux_sfreq:
+            if (i1 - i0) < (.8 + INCL_EDGE + INCL_EDGE) * sfreq:
                 print(f'skipped epoch with sample length {i1-i0}')
                 continue  # too short
             

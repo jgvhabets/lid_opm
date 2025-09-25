@@ -1,7 +1,7 @@
 {
     "TARGET_SFREQ": 512,
     "BANDPASS_LOW": 2,
-    "BANDPASS_HIGH": 195,
-    "NOTCH_FREQS": [50, 100, 150],
+    "BANDPASS_HIGH": 95,
+    "NOTCH_FREQS": [50, 100],
     "HFC_ORDER": 1
 }
