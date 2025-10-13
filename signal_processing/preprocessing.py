@@ -9,9 +9,10 @@ from itertools import product, compress
 from scipy.signal import butter, filtfilt, iirnotch
 import datetime as dt 
 
-from mne.filter import filter_data, notch_filter
+from mne.filter import filter_data, notch_filter, resample
 from mne.preprocessing import ICA, compute_proj_hfc
-
+from mne import create_info
+from mne.io import RawArray
 
 import source_raw_conversion.load_source_opm as source_opm
 from source_raw_conversion.load_lsl import convert_source_lsl_to_raw
@@ -22,6 +23,16 @@ class rawData_singleRec:
     """
     contains aligned raw data, t-0 is start of
     OPM recording; for one single recording (task)
+
+    Inputs:
+    - sub: "XX", ie "03"
+    - task: either "rest" or "task"
+    - acq: "predopa", or "dopaXX"
+    - INCL_AUX: include acc and emg, defaults true
+    - INCL_OPM: include OPM MEG, defaults false
+    - OPM_AXES_INCL: defaults to 'Z'
+    - OPM_PREPROC: default dict: {'resample': True, 'bandpass': False, 'notch': False}
+
 
     TODO: signal processing/state detection try to merge emg per extr
     """
@@ -34,6 +45,8 @@ class rawData_singleRec:
     OPM_PREPROC: dict = field(default_factory=lambda: {
         'resample': True, 'bandpass': False, 'notch': False
     })
+    ZSCORE_ACC: bool = False
+    ZSCORE_EMG: bool = False
     CONFIG_VERSION: str = 'v1'
 
     def __post_init__(self,):
@@ -49,14 +62,35 @@ class rawData_singleRec:
                 self.aux_sfreq, self.tasktimings
             ) = convert_source_lsl_to_raw(self.sub, self.task, self.acq)
             self.auxtimes = temp_auxdat[:, 0]
+            # self.rel_aux_sigs = []  # storing naming of relevant attributes
+
+
+            print(f'0000 SFREQ: {self.aux_sfreq}, TIMINGS-sec: {self.tasktimings["go_left"]["start"][:3]}')
             
-            # add indices from task stimulations, including 1-sec prior and 1-sec post!!
-            self.aux_task_epochs = add_task_epoch_idx(
-                self=self, times_to_use=self.auxtimes, sfreq=self.aux_sfreq
-            )
-            self.rel_aux_sigs = []  # storing naming of relevant attributes
+            # # add indices from task stimulations, including 1-sec prior and 1-sec post!!
+            # self.aux_task_epochs = add_task_epoch_idx(
+            #     self=self, times_to_use=self.auxtimes, sfreq=self.aux_sfreq
+            # )
+            # # check resulting indices and timings
+            # i_test = self.aux_task_epochs["go_left"][0][0]
+            # print(f'1111 SFREQ: {self.aux_sfreq}, TIMINGS: {self.auxtimes[:3]}, E TIME: @ {i_test}: {self.auxtimes[i_test]}')
 
             ### preprocess acc
+            auxdat_resampled = []
+            resample_factor = self.aux_sfreq / self.preproc_config["TARGET_SFREQ"]
+        
+            for i_ch, chname in enumerate(self.aux_chnames):
+                if 'acc' in chname or 'emg' in chname:
+                    auxdat_resampled.append(resample(temp_auxdat[:, i_ch], down=resample_factor))
+            temp_auxdat = np.array(auxdat_resampled).T
+            self.aux_sfreq = self.preproc_config["TARGET_SFREQ"]
+            self.auxtimes = self.auxtimes[0] + np.arange(0, temp_auxdat.shape[0]) * 1/self.aux_sfreq
+            self.aux_chnames = self.aux_chnames[1:]  # aligned_time is not included anymore
+
+            # # check resulting indices and timings
+            # i_test = self.aux_task_epochs["go_left"][0][0]
+            # print(f'2222: SFREQ: {self.aux_sfreq}, TIMINGS: {self.auxtimes[:3]}, E TIME: @ {i_test}: {self.auxtimes[i_test]}')
+            
             # bandpass all acc channels
             for i_ch in np.where(['acc' in c for c in self.aux_chnames])[0]:
                 sig = temp_auxdat[:, i_ch].copy()
@@ -66,40 +100,64 @@ class rawData_singleRec:
 
             # get sign vector magn for every extremity
             # TODO: consider to use only dominant-acc-axis, without absolute values
+            acc_chnames = []
+            acc_data = []
             for side, extr in product(['left', 'right'], ['hand', 'foot']):
                 triacc = [all(['acc' in c, side in c, extr in c])
                           for c in self.aux_chnames]
                 triacc = temp_auxdat[:, triacc]
                 # calc svm
-                svm = get_signal_vector_magn(triacc)
-                setattr(self, f'acc_svm_{side}{extr}', svm)
-                self.rel_aux_sigs.append(f'acc_svm_{side}{extr}')
+                acc_data.append(get_signal_vector_magn(triacc))
+                acc_chnames.append(f'acc_svm_{side}{extr}')
+            acc_data = np.array(acc_data)
+            
+            # standardise all emg and acc channels
+            if self.ZSCORE_EMG:
+                for i in np.arange(len(acc_chnames)):
+                    acc_data[i, :] = (acc_data[i, :] - np.mean(acc_data[i, :])) / np.std(acc_data[i, :])
+            
+            # add EMG signals as rawmne array
+            acc_info = create_info(ch_names=acc_chnames, sfreq=self.aux_sfreq, ch_types='misc')
+            setattr(self, 'ACC', RawArray(acc_data, acc_info))
 
 
             ### preprocess EMG
-            self.emg_chnames = [c for c in self.aux_chnames if 'emg' in c.lower()]
+            emg_chnames, emg_data = [], []
             for i_ch in np.where(['emg' in c for c in self.aux_chnames])[0]:
                 name = self.aux_chnames[i_ch]
                 # get envelop
-                setattr(
-                    self,
-                    name.replace('emg', 'emg_env'),
-                    get_emg_envelop(temp_auxdat[:, i_ch], sfreq=self.aux_sfreq)
-                )
-                self.rel_aux_sigs.append(name.replace('emg', 'emg_env'))
+                emg_chnames.append(name.replace('emg', 'emg_env'))
+                emg_data.append(get_emg_envelop(temp_auxdat[:, i_ch], sfreq=self.aux_sfreq))
+                
                 # get TKEO
-                setattr(
-                    self,
-                    name.replace('emg', 'emg_tkeo'),
-                    get_emg_tkeo(temp_auxdat[:, i_ch], sfreq=self.aux_sfreq,)
-                )
-                self.rel_aux_sigs.append(name.replace('emg', 'emg_tkeo'))
+                # emg_chnames.append(name.replace('emg', 'emg_tkeo'))
+                # emg_data.append(get_emg_tkeo(temp_auxdat[:, i_ch], sfreq=self.aux_sfreq,))
             
-            ### ZSCORE RELEVANT FEATURES
-            for ft in self.rel_aux_sigs:
-                sig = getattr(self, ft)
-                sig = (sig - np.mean(sig)) / np.std(sig)
-                setattr(self, ft, sig)
+            emg_data = np.array(emg_data)
+            
+            # standardise all emg and acc channels
+            if self.ZSCORE_ACC:
+                # currently z-scoring within task-recording, not over total recording
+                for i in np.arange(len(emg_chnames)):
+                    emg_data[i, :] = (emg_data[i, :] - np.mean(emg_data[i, :])) / np.std(emg_data[i, :])
+
+            
+            # add EMG signals as rawmne array
+            emg_info = create_info(ch_names=emg_chnames, sfreq=self.aux_sfreq, ch_types='emg')
+            setattr(self, 'EMG', RawArray(emg_data, emg_info))
+            # average arm EMG's
+            take_mean_emgArms(self,)  # replaces RawArray with mean inst of 2 sep arm emgs
+        
+            
+            ### ADD EPOCHING AFTER SIGNAL PREPROCESSING
+            # add indices from task stimulations, including 1-sec prior and 1-sec post!!
+            self.aux_task_epochs = add_task_epoch_idx(
+                self=self, times_to_use=self.auxtimes, sfreq=self.aux_sfreq
+            )
+            # # check resulting indices and timings
+            # i_test = self.aux_task_epochs["go_left"][0][0]
+            # print(f'3333: SFREQ: {self.aux_sfreq}, TIMINGS: {self.auxtimes[:3]}, E TIME: @ {i_test}: {self.auxtimes[i_test]}')
+
 
         #####
         if self.INCL_OPM:
@@ -132,6 +190,15 @@ class rawData_singleRec:
 
 
 def preprocess_opm(self, axis,):
+    """
+    
+    Input:
+    - self
+    - axis: x, y, z
+    - opm_rectimes: timestamps in seconds since start of opm recording,
+    on this time line antneuro and opm data are synced and aligned
+    
+    """
     meg_info = getattr(self, f"OPM_{axis}").info
 
     if self.OPM_PREPROC['resample']:
@@ -146,6 +213,10 @@ def preprocess_opm(self, axis,):
                 f"OPM_{axis}",
                 getattr(self, f"OPM_{axis}").resample(goal_fs, verbose=False)
             )
+        # align opmrectimes
+        nsamples = len(getattr(self, f"OPM_{axis}").times)
+        self.opmrec_times = self.opmrec_times[0] + np.arange(0, nsamples) * 1/self.aux_sfreq
+
     
     if self.OPM_PREPROC['bandpass']:
         temp_dat = getattr(self, f"OPM_{axis}").copy()
@@ -180,6 +251,7 @@ def preprocess_opm(self, axis,):
 
 
 
+
 def get_mne_event_array(self,):
 
     event_codes = {key: i+1 for i, key in enumerate(self.opm_task_epochs)}
@@ -194,12 +266,13 @@ def get_mne_event_array(self,):
     return event_codes, event_arr
 
 
-def add_task_epoch_idx(self, times_to_use, sfreq):
+def add_task_epoch_idx(self, times_to_use, sfreq, INCL_EDGE = 0):
     """
     takes one second before start and one second after end
+    INCL_EDGE = 1  # second extra prior and post
+
     """
 
-    INCL_EDGE = 1  # second extra prior and post
 
     task_epochs = {}
 
@@ -210,7 +283,7 @@ def add_task_epoch_idx(self, times_to_use, sfreq):
         # take every 3 sec window
         for sec in np.arange(np.round(times_to_use[0]) + .5 + INCL_EDGE,  # add 1 for edge, half for rounding up
                              np.round(times_to_use[-1] - INCL_EDGE),
-                             1+INCL_EDGE+INCL_EDGE):
+                             1+ 2):  # create distance between imaginary rest epochs
             task_dict['rest']['start'].append(sec)
             task_dict['rest']['end'].append(sec + 1)
     else:
@@ -250,7 +323,7 @@ def get_signal_vector_magn(triax_sig):
     return svm
 
 
-def get_emg_envelop(sig, sfreq, low_bpass=20, high_bpass=450, env_lowpass=4):
+def get_emg_envelop(sig, sfreq, low_bpass=20, high_bpass=250, env_lowpass=4):
 
     # apply notch filters
     for f in [50, 100, 150, 200,]:
@@ -318,3 +391,26 @@ def apply_filter(sig, low_f, sfreq, order=None, high_f=None,  type='band',
     sig = filtfilt(b, a, sig)
 
     return sig
+
+
+def take_mean_emgArms(self,):
+    tempRaw = self.EMG.copy()
+
+    for side in ['left', 'right']:
+
+        # apply function to selected channels
+        sel_chs = [ch for ch in self.EMG.info['ch_names']
+                if side in ch and ('delt' in ch or 'arm' in ch)]
+        tempEMG = self.EMG.copy().pick(sel_chs)
+        dat = np.mean(tempEMG.get_data(), axis=0)
+        tempEMG._data[0, :] = dat
+        # rename the single channel
+        n = sel_chs[0].split('_')
+        tempEMG.rename_channels({sel_chs[0]: f'{n[0]}_{n[1]}_{side}armmean'})
+
+        # drop old channels and add averaged one
+        tempRaw.drop_channels(sel_chs)
+        tempEMG.drop_channels(sel_chs[1])
+        tempRaw.add_channels([tempEMG])
+
+    setattr(self, 'EMG', tempRaw)

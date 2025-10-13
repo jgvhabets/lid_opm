@@ -105,7 +105,7 @@ def convert_source_lsl_to_raw(SUB, TASK, ACQ):
     # compare timing opm and lsl
     (meg_trigger_diffs,
      meg_time_trigger0) = sync.get_meg_trigger_diffs(SUB=SUB, ACQ=ACQ, TASK=TASK,
-                                                RETURN_MEGTIME_TRIGGER0=True)
+                                                     RETURN_MEGTIME_TRIGGER0=True)
     (sync_diffs,
      lsl_t_trigger0,
      lsl_clock_t0) = sync.compare_triggers(

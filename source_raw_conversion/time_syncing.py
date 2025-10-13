@@ -40,6 +40,11 @@ def get_AN_trigger_diffs(mrk_times, fileheader):
     # todo:
     ## include dopatime based on MED intake (via clock time)
     
+
+    Returns:
+    - differences to first-marker, for all markers in file
+    - lsl_t_trigger0: original LSL marker time for first trigger
+    - clock_start: relevant for ldopa time
     """
 
     if mrk_times[0] > 1e9:  # looks like absolute Unix time (seconds since 1970)

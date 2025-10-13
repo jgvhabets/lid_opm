@@ -3,31 +3,53 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+from itertools import product
 
 from utils.load_utils import get_onedrive_path
 
 def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
 
-    fig, axes = plt.subplots(nrows=len(recRaw.task_epochs) // 2,
-                            ncols=2,
-                            figsize=(8, 8))
+    fig, axes = plt.subplots(nrows=len(recRaw.aux_task_epochs) // 2,
+                             ncols=2,
+                             figsize=(8, 8))
     axes = axes.flatten()
     axestypes = []
 
-    EPOCH_SIZE = 3 * self.aux_sfreq  # sfreq = 1000 Hz; 1sec-pre, 1sec-task, 1-sec-post
+    PRE_MARKER_SEC = 1
+    POST_MARKER_SEC = 2
+    PRE_I_GAP = PRE_MARKER_SEC * recRaw.aux_sfreq
+    POST_I_GAP = POST_MARKER_SEC * recRaw.aux_sfreq
+    EPOCH_SIZE = PRE_I_GAP + POST_I_GAP  
 
-    for i, (tasktype, epochtimes) in enumerate(recRaw.aux_task_epochs.items()):
+    subplot_list = list(recRaw.aux_task_epochs.keys())
 
-        gotype, side = tasktype.split('_')
+    for i, (AUX_TYPE, (tasktype, epochtimes)) in enumerate(
+        product(['ACC', 'EMG'], recRaw.aux_task_epochs.items())
+    ):
+        print(f'STARTTT: {AUX_TYPE} - {tasktype}')
+        i_ax = np.where([tasktype == t for t in subplot_list])[0][0]
+
+        gotype, SIDE = tasktype.split('_')
         axestypes.append(gotype)
         
-        side_sigs = [s for s in recRaw.rel_aux_sigs if side in s]
+        # side_sigs = [s for s in recRaw.rel_aux_sigs if SIDE in s]
+        # AUX_TYPE = 'ACC'
+        AUX_CLASS = getattr(recRaw, AUX_TYPE).copy()
+        side_sigs = [s for s in AUX_CLASS.ch_names if SIDE in s]
+        print(AUX_CLASS.ch_names, side_sigs)
 
 
         for sig in side_sigs:
+            print(sig)
             epochs = []
+            values = AUX_CLASS.copy().pick(sig).get_data().ravel()  # get 1d array of data
+            print(values.shape)
+                
             for i0, _ in epochtimes:
-                epochs.append(getattr(recRaw, sig)[i0:i0+EPOCH_SIZE])
+                print(i0)
+                add_values = values[i0 - PRE_I_GAP:i0 + POST_I_GAP]
+                if len(add_values) == EPOCH_SIZE: epochs.append(add_values)
+                else: print(f'i: {i0} too short ({len(add_values)})')
             # pad last broken epoch with zeros to enable 2d-array
             try:
                 epochs = np.array(epochs)
@@ -40,15 +62,16 @@ def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
                     epochs = np.array(epochs)
             meansig = np.nanmean(epochs, axis=0)
 
-            axes[i].plot(meansig, label=sig.replace(f'_{side}', '_'),)
+            # PLOTTING
+            axes[i_ax].plot(meansig, label=sig.replace(f'_{SIDE}', '_'),)
         
         
         # once per ax plotting
-        axes[i].set_title(tasktype)
-        axes[i].axvline(ymin=0, ymax=1, x=1000, color='green', lw=3, alpha=.3,)
-        axes[i].axvline(ymin=0, ymax=1, x=2000, color='gray', lw=3, alpha=.3,)
+        axes[i_ax].set_title(tasktype)
+        axes[i_ax].axvline(ymin=0, ymax=1, x=PRE_I_GAP, color='green', lw=3, alpha=.3,)
+        axes[i_ax].axvline(ymin=0, ymax=1, x=PRE_I_GAP + recRaw.aux_sfreq * 1, color='gray', lw=3, alpha=.3,)  # at 1 sec
         if gotype == 'abort':
-            axes[i].axvline(ymin=0, ymax=1, x=1350, color='orange', lw=3, alpha=.3,)
+            axes[i_ax].axvline(ymin=0, ymax=1, x=PRE_I_GAP + recRaw.aux_sfreq * .35, color='darkred', lw=3, alpha=.3,)
         
 
     # combine legends
@@ -58,7 +81,7 @@ def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
         ax.set_ylim(-2, 6)
         ax.set_ylabel('z-scored signal (au)')
         ax.set_xlabel('time to trial-start (sec)')
-        ax.set_xticks([0, 1000, 2000, 3000])
+        ax.set_xticks([t * recRaw.aux_sfreq for t in [0, 1, 2, 3]])
         ax.set_xticklabels([-1, 0, 1, 2])
 
         # legend mng
