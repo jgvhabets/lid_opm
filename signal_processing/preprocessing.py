@@ -273,7 +273,8 @@ def get_mne_event_array(self, dType: str):
     return event_codes, event_arr
 
 
-def add_task_epoch_idx(self, times_to_use, sfreq, INCL_EDGE = 0):
+def add_task_epoch_idx(self, times_to_use, sfreq, INCL_EDGE = 0,
+                       REST_EPOC_LEN: int = 3,):
     """
     takes one second before start and one second after end
     INCL_EDGE = 1  # second extra prior and post
@@ -293,7 +294,7 @@ def add_task_epoch_idx(self, times_to_use, sfreq, INCL_EDGE = 0):
 
         for sec in np.arange(np.round(times_to_use[0]) + .5 + INCL_EDGE,  # add 1 for edge, half for rounding up
                              np.round(times_to_use[-1] - INCL_EDGE),
-                             1+ 2):  # create distance between imaginary rest epochs
+                             REST_EPOC_LEN):  # create distance between imaginary rest epochs
             task_dict['rest']['start'].append(sec)
 
     else:
