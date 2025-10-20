@@ -2,7 +2,8 @@
 Signal pre-processing functions for OPM and MEG, ACC
 """
 
-
+import os
+import json
 import numpy as np
 from dataclasses import dataclass, field
 from itertools import product, compress
@@ -14,9 +15,11 @@ from mne.preprocessing import ICA, compute_proj_hfc
 from mne import create_info
 from mne.io import RawArray
 
+# import custom
 import source_raw_conversion.load_source_opm as source_opm
 from source_raw_conversion.load_lsl import convert_source_lsl_to_raw
 from utils import load_utils
+from signal_processing import preproc_functions as prepr_funcs
 
 @dataclass()
 class rawData_singleRec:
@@ -47,54 +50,51 @@ class rawData_singleRec:
     })
     ZSCORE_ACC: bool = False
     ZSCORE_EMG: bool = False
+    COMBINE_ARM_EMG: bool = False
     CONFIG_VERSION: str = 'v1'
 
     def __post_init__(self,):
         # load config for sub and general
         self.sub_config = load_utils.load_subject_config(subject_id=self.sub,)
         self.preproc_config = load_utils.load_preproc_config(version=self.CONFIG_VERSION,)
+        # add means and stddevs to zscore
+        if self.ZSCORE_ACC or self.ZSCORE_EMG:
+            self.aux_zscore_values = get_aux_zscore_values(self=self)
 
         if self.INCL_AUX:
-            # load aux
-            # dont make aux_dat a class attribute to prevent storing of double data
+            ### load aux, w/o making aux_dat a class attribute to prevent storing of double data
             (
                 temp_auxdat, self.aux_chnames,
                 self.aux_sfreq, self.tasktimings
             ) = convert_source_lsl_to_raw(self.sub, self.task, self.acq)
             self.auxtimes = temp_auxdat[:, 0]
-            # self.rel_aux_sigs = []  # storing naming of relevant attributes
-
-
-            print(f'0000 SFREQ: {self.aux_sfreq}, TIMINGS-sec: {self.tasktimings["go_left"]["start"][:3]}')
             
-            # # add indices from task stimulations, including 1-sec prior and 1-sec post!!
+            # # add indices from task stimulations, only start indices, corresponding to auxtimes
             # self.aux_task_epochs = add_task_epoch_idx(
             #     self=self, times_to_use=self.auxtimes, sfreq=self.aux_sfreq
             # )
-            # # check resulting indices and timings
-            # i_test = self.aux_task_epochs["go_left"][0][0]
-            # print(f'1111 SFREQ: {self.aux_sfreq}, TIMINGS: {self.auxtimes[:3]}, E TIME: @ {i_test}: {self.auxtimes[i_test]}')
 
-            ### preprocess acc
-            auxdat_resampled = []
+            # RESAMPLE aux (both acc and emg)
             resample_factor = self.aux_sfreq / self.preproc_config["TARGET_SFREQ"]
-        
-            for i_ch, chname in enumerate(self.aux_chnames):
-                if 'acc' in chname or 'emg' in chname:
-                    auxdat_resampled.append(resample(temp_auxdat[:, i_ch], down=resample_factor))
-            temp_auxdat = np.array(auxdat_resampled).T
-            self.aux_sfreq = self.preproc_config["TARGET_SFREQ"]
-            self.auxtimes = self.auxtimes[0] + np.arange(0, temp_auxdat.shape[0]) * 1/self.aux_sfreq
-            self.aux_chnames = self.aux_chnames[1:]  # aligned_time is not included anymore
+            if resample_factor != 1:
+                self.aux_sfreq = self.preproc_config["TARGET_SFREQ"]
+                (temp_auxdat,
+                 self.aux_chnames,
+                 self.auxtimes) = prepr_funcs.resample_aux_array(
+                    temp_auxdat=temp_auxdat,
+                    aux_chnames=self.aux_chnames,
+                    auxtimes=self.auxtimes,
+                    aux_sfreq=self.aux_sfreq,
+                    FACTOR=resample_factor,
+                )
 
-            # # check resulting indices and timings
-            # i_test = self.aux_task_epochs["go_left"][0][0]
-            # print(f'2222: SFREQ: {self.aux_sfreq}, TIMINGS: {self.auxtimes[:3]}, E TIME: @ {i_test}: {self.auxtimes[i_test]}')
-            
-            # bandpass all acc channels
+
+            ### PREPROCESS ACC
+
+            # BANDPASS all acc channels
             for i_ch in np.where(['acc' in c for c in self.aux_chnames])[0]:
                 sig = temp_auxdat[:, i_ch].copy()
-                sig = apply_filter(sig, sfreq=self.aux_sfreq, type='band',
+                sig = prepr_funcs.apply_filter(sig, sfreq=self.aux_sfreq, type='band',
                                           low_f=2, high_f=20,)
                 temp_auxdat[:, i_ch] = sig
 
@@ -107,56 +107,62 @@ class rawData_singleRec:
                           for c in self.aux_chnames]
                 triacc = temp_auxdat[:, triacc]
                 # calc svm
-                acc_data.append(get_signal_vector_magn(triacc))
+                acc_data.append(prepr_funcs.get_signal_vector_magn(triacc))
                 acc_chnames.append(f'acc_svm_{side}{extr}')
             acc_data = np.array(acc_data)
             
-            # standardise all emg and acc channels
-            if self.ZSCORE_EMG:
-                for i in np.arange(len(acc_chnames)):
-                    acc_data[i, :] = (acc_data[i, :] - np.mean(acc_data[i, :])) / np.std(acc_data[i, :])
+            # STANDARDISE all acc channels
+            if self.ZSCORE_ACC:
+                for i, ch in enumerate(acc_chnames):
+                    m = self.aux_zscore_values[ch]['mean']
+                    sd = self.aux_zscore_values[ch]['sd']
+                    acc_data[i, :] = (acc_data[i, :] - m) / sd
             
-            # add EMG signals as rawmne array
+            # add ACC signals as rawmne array, MNE-Object-Times cannot be customized, therefore object-times start from zero
+            # use for all AUX self.axutimes for the synchronized MEG time
             acc_info = create_info(ch_names=acc_chnames, sfreq=self.aux_sfreq, ch_types='misc')
             setattr(self, 'ACC', RawArray(acc_data, acc_info))
 
 
-            ### preprocess EMG
+            ### PREPROCESS EMG
+
+            # process EMG signals
             emg_chnames, emg_data = [], []
             for i_ch in np.where(['emg' in c for c in self.aux_chnames])[0]:
                 name = self.aux_chnames[i_ch]
                 # get envelop
                 emg_chnames.append(name.replace('emg', 'emg_env'))
-                emg_data.append(get_emg_envelop(temp_auxdat[:, i_ch], sfreq=self.aux_sfreq))
+                emg_data.append(prepr_funcs.get_emg_envelop(temp_auxdat[:, i_ch], sfreq=self.aux_sfreq))
                 
                 # get TKEO
                 # emg_chnames.append(name.replace('emg', 'emg_tkeo'))
-                # emg_data.append(get_emg_tkeo(temp_auxdat[:, i_ch], sfreq=self.aux_sfreq,))
+                # emg_data.append(prepr_funcs.get_emg_tkeo(temp_auxdat[:, i_ch], sfreq=self.aux_sfreq,))
             
             emg_data = np.array(emg_data)
             
             # standardise all emg and acc channels
-            if self.ZSCORE_ACC:
-                # currently z-scoring within task-recording, not over total recording
-                for i in np.arange(len(emg_chnames)):
-                    emg_data[i, :] = (emg_data[i, :] - np.mean(emg_data[i, :])) / np.std(emg_data[i, :])
-
+            if self.ZSCORE_EMG:
+                for i, ch in enumerate(emg_chnames):
+                    m = self.aux_zscore_values[ch]['mean']
+                    sd = self.aux_zscore_values[ch]['sd']
+                    emg_data[i, :] = (emg_data[i, :] - m) / sd
             
             # add EMG signals as rawmne array
             emg_info = create_info(ch_names=emg_chnames, sfreq=self.aux_sfreq, ch_types='emg')
             setattr(self, 'EMG', RawArray(emg_data, emg_info))
-            # average arm EMG's
-            take_mean_emgArms(self,)  # replaces RawArray with mean inst of 2 sep arm emgs
-        
             
+            if self.COMBINE_ARM_EMG:
+                # average arm EMG's
+                take_mean_emgArms(self,)  # replaces RawArray with mean inst of 2 sep arm emgs
+        
+
             ### ADD EPOCHING AFTER SIGNAL PREPROCESSING
             # add indices from task stimulations, including 1-sec prior and 1-sec post!!
             self.aux_task_epochs = add_task_epoch_idx(
                 self=self, times_to_use=self.auxtimes, sfreq=self.aux_sfreq
             )
-            # # check resulting indices and timings
-            # i_test = self.aux_task_epochs["go_left"][0][0]
-            # print(f'3333: SFREQ: {self.aux_sfreq}, TIMINGS: {self.auxtimes[:3]}, E TIME: @ {i_test}: {self.auxtimes[i_test]}')
+            # create array to mark event epochs
+            self.aux_event_codes, self.aux_event_arr = get_mne_event_array(self, dType='AUX')
 
 
         #####
@@ -180,11 +186,11 @@ class rawData_singleRec:
 
                 self.opm_task_epochs = add_task_epoch_idx(
                     self=self,
-                    times_to_use=getattr(self, f'OPM_{ax}').times,
+                    times_to_use=self.opmrec_times,
                     sfreq=getattr(self, f'OPM_{ax}').info['sfreq']
                 )
                 # create array to mark event epochs
-                self.event_codes, self.event_arr = get_mne_event_array(self)
+                self.opm_event_codes, self.opm_event_arr = get_mne_event_array(self, dType='OPM')
 
 
 
@@ -205,9 +211,9 @@ def preprocess_opm(self, axis,):
         # resample
         goal_fs = self.preproc_config["TARGET_SFREQ"]
         if meg_info['sfreq'] <= goal_fs:
-            print(f'original sfreq {meg_info.info["sfreq"]} vs sfreq {goal_fs}')
+            print(f'original OPM: sfreq {meg_info.info["sfreq"]} vs sfreq {goal_fs}')
         else:
-            print(f'resample original sampling rate {meg_info["sfreq"]} to {goal_fs}')
+            print(f'resample original OPM-sampling rate {meg_info["sfreq"]} to {goal_fs}')
             setattr(
                 self,
                 f"OPM_{axis}",
@@ -252,14 +258,15 @@ def preprocess_opm(self, axis,):
 
 
 
-def get_mne_event_array(self,):
+def get_mne_event_array(self, dType: str):
 
-    event_codes = {key: i+1 for i, key in enumerate(self.opm_task_epochs)}
+    EPOCH_ATTR = f'{dType.lower()}_task_epochs'
+    event_codes = {key: i+1 for i, key in enumerate(getattr(self, EPOCH_ATTR))}
 
     event_lists = []  # to creat array afterwards [start_index, 0, event_code]
-    for e_key, e_idx in self.opm_task_epochs.items():
+    for e_key, e_idx in getattr(self, EPOCH_ATTR).items():
         for e_i in e_idx:
-            event_lists.append([e_i[0], 0, event_codes[e_key]])
+            event_lists.append([e_i, 0, event_codes[e_key]])
 
     event_arr = np.array(event_lists)
 
@@ -271,6 +278,8 @@ def add_task_epoch_idx(self, times_to_use, sfreq, INCL_EDGE = 0):
     takes one second before start and one second after end
     INCL_EDGE = 1  # second extra prior and post
 
+    # adjust 14.10 only start epoch indices
+
     """
 
 
@@ -278,119 +287,40 @@ def add_task_epoch_idx(self, times_to_use, sfreq, INCL_EDGE = 0):
 
     # take extracted timings from behavioral task, for rest
     # take every three-second window as an epoch
+
     if self.task == 'rest':
-        task_dict = {'rest': {'start': [], 'end': []}}
-        # take every 3 sec window
+        task_dict = {'rest': {'start': []}}
+
         for sec in np.arange(np.round(times_to_use[0]) + .5 + INCL_EDGE,  # add 1 for edge, half for rounding up
                              np.round(times_to_use[-1] - INCL_EDGE),
                              1+ 2):  # create distance between imaginary rest epochs
             task_dict['rest']['start'].append(sec)
-            task_dict['rest']['end'].append(sec + 1)
+
     else:
         task_dict = self.tasktimings
+
 
     for task, timings in task_dict.items():
 
         task_epochs[task] = []
 
-        for t0, t1 in zip(timings['start'], timings['end']):
+        for t0 in timings['start']:
 
             i0 = np.argmin(abs(times_to_use - (t0 - INCL_EDGE)))
-            i1 = np.argmin(abs(times_to_use - (t1 + INCL_EDGE)))
 
+            i1 = np.argmin(abs(times_to_use - (t0 + 3)))
             if i0 == i1: continue  # happened when task was incorrectly started before real start
-            if (i1 - i0) < (.8 + INCL_EDGE + INCL_EDGE) * sfreq:
+            if (i1 - i0) < (3 * sfreq):
                 print(f'skipped epoch with sample length {i1-i0}')
                 continue  # too short
             
-            task_epochs[task].append((i0, i1))
+            task_epochs[task].append(i0)
 
     return task_epochs
 
 
 
-def get_signal_vector_magn(triax_sig):
 
-    if triax_sig.shape[0] != 3: triax_sig = triax_sig.T
-    assert triax_sig.shape[0] == 3, 'no 3-axial signal fiven for SVM'
-
-    svm = np.sqrt(
-        triax_sig[0, :] ** 2 +
-        triax_sig[1, :] ** 2 +
-        triax_sig[2, :] ** 2
-    )
-
-    return svm
-
-
-def get_emg_envelop(sig, sfreq, low_bpass=20, high_bpass=250, env_lowpass=4):
-
-    # apply notch filters
-    for f in [50, 100, 150, 200,]:
-        sig = apply_filter(sig, low_f=f, sfreq=sfreq, type='notch')
-
-    # bandpass filter to remove artefactsd and isolate oscillations
-    sig = apply_filter(sig, low_f=low_bpass, high_f=high_bpass,
-                              order=4, sfreq=sfreq, type='band')
-    
-    # rectify signal
-    sig = np.abs(sig)
-
-    # get slow oscillations of interest, get "envelop"
-    sig = apply_filter(sig, order=2, low_f=env_lowpass,
-                               sfreq=sfreq, type='low',)
-
-    return sig
-
-
-def get_emg_tkeo(sig, sfreq, smooth_winlen=20,):
-    """
-    Teager-Kaiser Energy Operator (TKEO):
-    more precise for EMG onset detection
-    """
-    # apply notch filters
-    for f in [50, 100, 150, 200,]:
-        sig = apply_filter(sig, low_f=f, sfreq=sfreq, type='notch')
-
-    tkeo_sig = sig[1:-1] ** 2 - (sig[0:-2] * sig[2:])  # length reduces by 2
-    temp = np.zeros_like(sig)  # pad to original length
-    temp[1:-1] = tkeo_sig
-    tkeo_sig = temp
-    tkeo_sig = np.abs(tkeo_sig)  # rectify
-    # smoothen
-    kernel = np.ones(smooth_winlen) / max(1, smooth_winlen)
-    tkeo_sig = np.sqrt(np.convolve(tkeo_sig ** 2, kernel, mode='same'))
-
-    return tkeo_sig
-    
-
-def apply_filter(sig, low_f, sfreq, order=None, high_f=None,  type='band',
-                 Q=30,):
-    """
-    for notch filter, freq = low_f
-
-    q is for notch, larger Q, narrower notch
-    """
-    
-    assert type in ['band', 'low', 'notch'], 'wrong type butter filter'
-
-    if not order:
-        if type == 'band': order = 4
-        else: order = 2
-
-
-    if type == 'band':
-        b, a = butter(order, [low_f, high_f], fs=sfreq, btype='band')  # in older scipy version: high_bpass/(sfreq/2), without fs argument
-
-    elif type == 'low':
-        b, a = butter(order, low_f, fs=sfreq, btype='low')  # in older scipy version: high_bpass/(sfreq/2), without fs argument
-
-    elif type == 'notch':
-        b, a = iirnotch(low_f, Q=Q, fs=sfreq,)
-
-    sig = filtfilt(b, a, sig)
-
-    return sig
 
 
 def take_mean_emgArms(self,):
@@ -414,3 +344,80 @@ def take_mean_emgArms(self,):
         tempRaw.add_channels([tempEMG])
 
     setattr(self, 'EMG', tempRaw)
+
+
+
+
+def get_aux_zscore_values(self,):
+    fname = f'sub{self.sub}_zscore_aux_values.json'
+    path = os.path.join(load_utils.get_onedrive_path('raw_data'),
+                        f'sub-{self.sub}', 'emgacc')
+    
+    if fname in os.listdir(path):
+
+        with open(os.path.join(path, fname), 'r') as f:
+            tempdict = json.load(f)
+    
+    else:
+
+        tempdict = get_aux_zscore_values(SUB=self.SUB, RETURN=True,)
+        
+    return tempdict
+
+
+def get_aux_zscore_variabels(SUB, RETURN=True,):
+    """
+    calculate and stores means and stddevs for one subject
+    based on all recordings, in order to zscore data while
+    importing based on the full recordings
+
+    needs to be checked whether execution within rawData_singleRec()
+    works (doesnt give circular import or such errors)
+    """
+
+    sub_config = load_utils.load_subject_config(subject_id=SUB,)
+    sub_meta_info = load_utils.get_sub_rec_metainfo(config_sub=sub_config)
+
+    temp_arrs = None
+
+    for _, REC in enumerate(sub_meta_info['rec_name']):
+        print(f'\t(sub-{SUB}, load{REC}')
+
+        try:
+            TASK, ACQ = REC.split('_')
+        except ValueError:
+            print(f'skipped {REC}')
+            continue
+
+        tempRaw = rawData_singleRec(
+            SUB, TASK, ACQ, INCL_AUX=True, INCL_OPM=False,
+            ZSCORE_ACC=False, ZSCORE_EMG=False,
+        )
+
+        if not temp_arrs:
+            temp_arrs = {}
+            for ch in tempRaw.ACC.ch_names: temp_arrs[ch] = []
+            for ch in tempRaw.EMG.ch_names: temp_arrs[ch] = []
+        
+        for src in ['ACC', 'EMG']:
+            temp_dat = getattr(tempRaw, src).copy()
+            for ch in temp_dat.ch_names:
+                temp_arrs[ch].extend(temp_dat.copy().pick(ch).get_data().ravel())
+
+    store_dict = {}
+    for ch, values in temp_arrs.items():
+        store_dict[ch] = {'mean': np.nanmean(values), 'sd': np.nanstd(values)}
+
+    fname = f'sub{SUB}_zscore_aux_values.json'
+    fpath = os.path.join(
+        load_utils.get_onedrive_path('raw_data'),
+        f'sub-{SUB}', 'emgacc', fname
+    )
+
+    with open(fpath, 'w') as f:
+        json.dump(store_dict, f)
+
+    print(f'\tAUX-zscores ({fname}) succesfully stored as ')
+
+    if RETURN: return store_dict
+

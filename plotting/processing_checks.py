@@ -26,27 +26,19 @@ def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
     for i, (AUX_TYPE, (tasktype, epochtimes)) in enumerate(
         product(['ACC', 'EMG'], recRaw.aux_task_epochs.items())
     ):
-        print(f'STARTTT: {AUX_TYPE} - {tasktype}')
         i_ax = np.where([tasktype == t for t in subplot_list])[0][0]
-
         gotype, SIDE = tasktype.split('_')
         axestypes.append(gotype)
         
-        # side_sigs = [s for s in recRaw.rel_aux_sigs if SIDE in s]
-        # AUX_TYPE = 'ACC'
         AUX_CLASS = getattr(recRaw, AUX_TYPE).copy()
         side_sigs = [s for s in AUX_CLASS.ch_names if SIDE in s]
-        print(AUX_CLASS.ch_names, side_sigs)
 
 
         for sig in side_sigs:
-            print(sig)
             epochs = []
             values = AUX_CLASS.copy().pick(sig).get_data().ravel()  # get 1d array of data
-            print(values.shape)
                 
-            for i0, _ in epochtimes:
-                print(i0)
+            for i0 in epochtimes:
                 add_values = values[i0 - PRE_I_GAP:i0 + POST_I_GAP]
                 if len(add_values) == EPOCH_SIZE: epochs.append(add_values)
                 else: print(f'i: {i0} too short ({len(add_values)})')
@@ -61,17 +53,21 @@ def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
                     epochs[i_short] = temp
                     epochs = np.array(epochs)
             meansig = np.nanmean(epochs, axis=0)
+            n_epochs = epochs.shape[0]
 
             # PLOTTING
             axes[i_ax].plot(meansig, label=sig.replace(f'_{SIDE}', '_'),)
         
         
         # once per ax plotting
-        axes[i_ax].set_title(tasktype)
-        axes[i_ax].axvline(ymin=0, ymax=1, x=PRE_I_GAP, color='green', lw=3, alpha=.3,)
-        axes[i_ax].axvline(ymin=0, ymax=1, x=PRE_I_GAP + recRaw.aux_sfreq * 1, color='gray', lw=3, alpha=.3,)  # at 1 sec
+        axes[i_ax].set_title(f'{tasktype} (n = {n_epochs})')
+        axes[i_ax].axvline(ymin=0, ymax=1, x=PRE_I_GAP,
+                           color='green', lw=3, alpha=.3,)
+        axes[i_ax].axvline(ymin=0, ymax=1, x=PRE_I_GAP + recRaw.aux_sfreq * 1,
+                           color='gray', lw=3, alpha=.3,)  # at 1 sec
         if gotype == 'abort':
-            axes[i_ax].axvline(ymin=0, ymax=1, x=PRE_I_GAP + recRaw.aux_sfreq * .35, color='darkred', lw=3, alpha=.3,)
+            axes[i_ax].axvline(ymin=0, ymax=1, x=PRE_I_GAP + recRaw.aux_sfreq * .35,
+                               color='darkred', lw=3, alpha=.3,)
         
 
     # combine legends
@@ -80,7 +76,7 @@ def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
     for ax in axes:
         ax.set_ylim(-2, 6)
         ax.set_ylabel('z-scored signal (au)')
-        ax.set_xlabel('time to trial-start (sec)')
+        ax.set_xlabel('time to trial-cue (sec)')
         ax.set_xticks([t * recRaw.aux_sfreq for t in [0, 1, 2, 3]])
         ax.set_xticklabels([-1, 0, 1, 2])
 
@@ -102,7 +98,7 @@ def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
     if SAVE:
         figpath = os.path.join(get_onedrive_path('figures'),
                                'processing', 'behav_gonogocheck')
-        fname = f'emgaccCheck_gonogo_sub{recRaw.sub}_{recRaw.task}_{recRaw.acq}'
+        fname = f'EmgAcc_tasks_sub{recRaw.sub}_{recRaw.task}_{recRaw.acq}'
         plt.savefig(os.path.join(figpath, fname), dpi=300, facecolor='w',
                     bbox_inches="tight",)
 
