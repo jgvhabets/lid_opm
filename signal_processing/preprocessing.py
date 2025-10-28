@@ -20,6 +20,8 @@ import source_raw_conversion.load_source_opm as source_opm
 from source_raw_conversion.load_lsl import convert_source_lsl_to_raw
 from utils import load_utils
 from signal_processing import preproc_functions as prepr_funcs
+import signal_processing.epoching as epoching
+
 
 @dataclass()
 class rawData_singleRec:
@@ -158,11 +160,11 @@ class rawData_singleRec:
 
             ### ADD EPOCHING AFTER SIGNAL PREPROCESSING
             # add indices from task stimulations, including 1-sec prior and 1-sec post!!
-            self.aux_task_epochs = add_task_epoch_idx(
+            self.aux_task_epochs = epoching.add_task_epoch_idx(
                 self=self, times_to_use=self.auxtimes, sfreq=self.aux_sfreq
             )
             # create array to mark event epochs
-            self.aux_event_codes, self.aux_event_arr = get_mne_event_array(self, dType='AUX')
+            self.aux_event_codes, self.aux_event_arr = epoching.get_mne_event_array(self, dType='AUX')
 
 
         #####
@@ -184,13 +186,16 @@ class rawData_singleRec:
                 # preprocess opm axis
                 preprocess_opm(self, axis=ax,)
 
-                self.opm_task_epochs = add_task_epoch_idx(
+                self.opm_task_epochs = epoching.add_task_epoch_idx(
                     self=self,
                     times_to_use=self.opmrec_times,
                     sfreq=getattr(self, f'OPM_{ax}').info['sfreq']
                 )
                 # create array to mark event epochs
-                self.opm_event_codes, self.opm_event_arr = get_mne_event_array(self, dType='OPM')
+                (
+                    self.opm_event_codes,
+                    self.opm_event_arr
+                ) = epoching.get_mne_event_array(self, dType='OPM')
 
 
 
@@ -254,71 +259,6 @@ def preprocess_opm(self, axis,):
         # temp_dat = meg_dat.copy()
         getattr(self, f"OPM_{axis}").add_proj(proj_hfc)
         getattr(self, f"OPM_{axis}").apply_proj()
-
-
-
-
-def get_mne_event_array(self, dType: str):
-
-    EPOCH_ATTR = f'{dType.lower()}_task_epochs'
-    event_codes = {key: i+1 for i, key in enumerate(getattr(self, EPOCH_ATTR))}
-
-    event_lists = []  # to creat array afterwards [start_index, 0, event_code]
-    for e_key, e_idx in getattr(self, EPOCH_ATTR).items():
-        for e_i in e_idx:
-            event_lists.append([e_i, 0, event_codes[e_key]])
-
-    event_arr = np.array(event_lists)
-
-    return event_codes, event_arr
-
-
-def add_task_epoch_idx(self, times_to_use, sfreq, INCL_EDGE = 0,
-                       REST_EPOC_LEN: int = 3,):
-    """
-    takes one second before start and one second after end
-    INCL_EDGE = 1  # second extra prior and post
-
-    # adjust 14.10 only start epoch indices
-
-    """
-
-
-    task_epochs = {}
-
-    # take extracted timings from behavioral task, for rest
-    # take every three-second window as an epoch
-
-    if self.task == 'rest':
-        task_dict = {'rest': {'start': []}}
-
-        for sec in np.arange(np.round(times_to_use[0]) + .5 + INCL_EDGE,  # add 1 for edge, half for rounding up
-                             np.round(times_to_use[-1] - INCL_EDGE),
-                             REST_EPOC_LEN):  # create distance between imaginary rest epochs
-            task_dict['rest']['start'].append(sec)
-
-    else:
-        task_dict = self.tasktimings
-
-
-    for task, timings in task_dict.items():
-
-        task_epochs[task] = []
-
-        for t0 in timings['start']:
-
-            i0 = np.argmin(abs(times_to_use - (t0 - INCL_EDGE)))
-
-            i1 = np.argmin(abs(times_to_use - (t0 + 3)))
-            if i0 == i1: continue  # happened when task was incorrectly started before real start
-            if (i1 - i0) < (3 * sfreq):
-                print(f'skipped epoch with sample length {i1-i0}')
-                continue  # too short
-            
-            task_epochs[task].append(i0)
-
-    return task_epochs
-
 
 
 
