@@ -5,6 +5,8 @@ Exploring cortical patterns of levodopa induced dyskinesia using OPM-MEG.
 - EMG ACC analysis
 This branch will have all of the code relating to the EMG-data collection, EMG-Analysis and also code for the Accelerometer. Excited to get started!
 
+**Note:** This branch (`dev_preprocess_exploration`) is based on `dev_preprocess` and is dedicated to exploring new test datasets and testing preprocessing workflows.
+
 # Dependencies
 `conda create --name ENVNAME --file lid_opm_environment.yml` (gonogo)
 `conda create --name ENVNAME --file lidopm_env_22092025.yml` (preprocess)
