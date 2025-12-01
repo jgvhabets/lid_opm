@@ -19,6 +19,15 @@
       "behavfederico1": "20250911_132127",
       "withemgacc": "20250911_144603"
     },
+    "event_timestamps": {
+      "withemgacc": [
+        18.091,
+        85.671,
+        127.289,
+        183.421,
+        226.357
+      ]
+    },
     "meg_channels": {
       "L105": { "chassis_pos": "s99", "y": "L105_by-s99", "z": "L105_bz-s99" },
       "L106": { "chassis_pos": "s109", "y": "L106_by-s109", "z": "L106_bz-s109" },
