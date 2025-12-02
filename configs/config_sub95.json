@@ -134,12 +134,6 @@
         "subfolder": "OPM_MEG",
         "file_extension": ".fif",
         "filename_pattern": "{timestamp}_sub-test01_file-{task}_raw.fif"
-      },
-      "raw_data": {
-        "base_folder": "raw_data",
-        "subfolder": "OPM_MEG",
-        "file_extension": ".fif",
-        "filename_pattern": "{subject_id}_OPM-MEG_{setup}_{task}_raw.fif"
       }
     }
   }
