@@ -19,7 +19,12 @@ import mne
 from mne.filter import filter_data
 
 # Function to calculate individual power spectra using windowed segments with overlap
-def calculate_individual_power_spectra(signal, sfreq, window_length, overlap):
+def calculate_individual_power_spectra(
+    signal,
+    sfreq,
+    window_length = 1,
+    overlap = 0,
+):
     """
     Calculate individual power spectra using windowed segments with overlap.
     
@@ -75,7 +80,10 @@ def calculate_individual_power_spectra(signal, sfreq, window_length, overlap):
     return freqs, all_psds, window_times
 
 
-def plot_all_channel_power_spectra(channels, channel_names, title, sfreq, window_length, overlap, freq_range=(1, 100)):
+def plot_all_channel_power_spectra(
+    channels, channel_names, title,
+    sfreq, window_length, overlap, freq_range=(1, 100),
+):
     """
     Plot power spectra for all channels in a single figure.
 
