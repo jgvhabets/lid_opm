@@ -6,12 +6,14 @@ from gonogo_task.stimuli import (
 )
 from utils.lsl_stream import send_marker
 
+from arduino_trigger import send_trigger
 
 
 def run_trial(screen, trial_type, cfg, clock, outlet=None,
               abort_go_duration=None,
               CHECKING_FREQ_FrameSec: int = 100,
-              verbose = False,):
+              verbose = False,
+              TRIGGER_PIN=None,):
     """
     
     Abort trials: depending on successful or unsuccessful
@@ -38,6 +40,9 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     # --- Stimulus onset ---
     stim_onset = time.time()
     responded = False
+
+    ### SEND ARDUINO TRIGGER
+    send_trigger(pin=TRIGGER_PIN, TRIG_type=trial_type,)
 
 
     if trial_type == "go":

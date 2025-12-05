@@ -8,6 +8,9 @@ from datetime import datetime
 from gonogo_task.trial import run_trial
 from utils.lsl_stream import send_marker
 
+# test
+import arduino_trigger as ard_trigger
+
 random.seed(27)
 
 
@@ -76,6 +79,8 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
     log_filename = cfg.get("log_file", f"gonogo_results_{timestring}.csv")
     log_path = os.path.join(data_dir, log_filename)
 
+    # INIT ADRUINO
+    TRIGGER_PIN, ARDUINO_BOARD = ard_trigger.init_board()
 
     ### Waiting screen before starting task
     send_marker(outlet, f"TASK_INIT_beforeWaitScreen")
@@ -97,6 +102,7 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
 
         trial_data = run_trial(screen, trial_type, cfg, clock, outlet,
                                abort_go_duration=current_abort_duration,
+                               TRIGGER_PIN=TRIGGER_PIN,
                                verbose=verbose,)
         trial_data["trial"] = t + 1
         trial_data["timestamp"] = time.time() - exp_start
@@ -123,6 +129,10 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
 
         iti = jittered_iti(cfg)
         pygame.time.wait(int(iti * 1000))
+
+
+    ### end of experiment
+    ard_trigger.close_board(pin=TRIGGER_PIN, board=ARDUINO_BOARD)
 
     if results:
         with open(log_path, "w", newline="") as f:
