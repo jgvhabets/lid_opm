@@ -1,12 +1,12 @@
 import pygame
 import time
 
-from gonogo_task.stimuli import (
+from tasks.stimuli import (
     draw_fixation, draw_go_stimulus, draw_nogo_stimulus
 )
 from utils.lsl_stream import send_marker
 
-from arduino_trigger import send_trigger
+from tasks.arduino_trigger import send_trigger
 
 
 def run_trial(screen, trial_type, cfg, clock, outlet=None,
@@ -42,7 +42,8 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     responded = False
 
     ### SEND ARDUINO TRIGGER
-    send_trigger(pin=TRIGGER_PIN, TRIG_type=trial_type,)
+    if cfg['USE_ARDUINO']:
+        send_trigger(pin=TRIGGER_PIN, TRIG_type=trial_type,)
 
 
     if trial_type == "go":

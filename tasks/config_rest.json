@@ -1,0 +1,11 @@
+{
+  "screen_id": 0,
+  "experiment_duration": 30,
+  "screen_width": 800,
+  "screen_height": 600,
+  "bg_color": [0, 0, 0],
+  "fixation_color": [255, 255, 255],
+  "response_keys": ["space"],
+  "synctrigger_interval": 5,
+  "USE_ARDUINO": false
+}

@@ -1,11 +1,35 @@
 import time
 import pyfirmata2
+from serial.tools import list_ports
 
+
+def find_arduino_port():
+    """
+    Scans all serial ports and returns the port of a SparkFun/Arduino device.
+    Returns None if nothing is found.
+    """
+    ports = list_ports.comports()
+
+    for port in ports:
+        desc = port.description.lower()
+
+        # You can extend this keyword list anytime
+        if ("SparkFun Pro Micro" in desc or
+            "sparkfun" in desc or
+            "arduino" in desc or
+            "usb serial" in desc):
+
+            print(f"[INFO] Found Arduino/SparkFun device on: {port.device}")
+            return port.device
+
+    print("[ERROR] No Arduino/SparkFun device found.")
+
+    return None
 
 
 
 def init_board(
-    PORT = 'COM6',          # Deinen Port hier setzen  --> TODO should be automated
+    # PORT = 'COM6',          # Deinen Port hier setzen  --> TODO should be automated
     PIN = 9,                # D9 als TTL-Ausgang!  is default in triggerbox hardware
 ):
     """
@@ -17,11 +41,21 @@ def init_board(
     - board: to close board at end
     """
 
-    try:
-        board = pyfirmata2.Arduino(PORT)
-    except:
-        raise ValueError('COM PORT incorrect? --> check "DeviceManger" or "GeräteManager"')
+    # try:
+    #     board = pyfirmata2.Arduino(PORT)
+    # except:
+    #     raise ValueError('COM PORT incorrect? --> check "DeviceManger" or "GeräteManager"')
     
+    port = find_arduino_port()
+
+    if port is None:
+        print("[FATAL ARDUINO] Cannot continue without a valid port.")
+
+    # Connect using pyfirmata2
+    print("[INFO] Connecting to arduino...")
+    board = pyfirmata2.Arduino(port)
+    print("[INFO] Arduino-connection established.")
+
     print("Board connected:", board)
 
     # initialise PWM-Pin
@@ -53,7 +87,8 @@ def send_trigger(pin, TRIG_type, TRIG_version='v1',):
             'go': [.1, .05],
             'nogo': [.1, .15],
             'abort': [.1, .3],
-            'LOW_pause': .05
+            'LOW_pause': .05,
+            'rest': [0.5,]
         }
     }
 

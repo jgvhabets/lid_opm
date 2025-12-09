@@ -5,11 +5,9 @@ import pygame
 import os
 from datetime import datetime
 
-from gonogo_task.trial import run_trial
+from tasks.trial import run_trial
 from utils.lsl_stream import send_marker
-
-# test
-import arduino_trigger as ard_trigger
+import tasks.arduino_trigger as ard_trigger
 
 random.seed(27)
 
@@ -65,7 +63,7 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
     trials = generate_trials(cfg)
     results = []
 
-    exp_duration = cfg.get("experiment_duration", None)
+    exp_duration = cfg["experiment_duration"]
     current_abort_duration = cfg["abort_go_duration"]
 
     # prepare log folder, __file__ is something like .../code/repo_root/gonogo_task/experiment.py
@@ -80,7 +78,10 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
     log_path = os.path.join(data_dir, log_filename)
 
     # INIT ADRUINO
-    TRIGGER_PIN, ARDUINO_BOARD = ard_trigger.init_board()
+    if cfg['USE_ARDUINO']:
+        TRIGGER_PIN, ARDUINO_BOARD = ard_trigger.init_board()
+    else:
+        TRIGGER_PIN, ARDUINO_BOARD = None, None
 
     ### Waiting screen before starting task
     send_marker(outlet, f"TASK_INIT_beforeWaitScreen")
@@ -132,7 +133,8 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
 
 
     ### end of experiment
-    ard_trigger.close_board(pin=TRIGGER_PIN, board=ARDUINO_BOARD)
+    if cfg['USE_ARDUINO']:
+        ard_trigger.close_board(pin=TRIGGER_PIN, board=ARDUINO_BOARD)
 
     if results:
         with open(log_path, "w", newline="") as f:

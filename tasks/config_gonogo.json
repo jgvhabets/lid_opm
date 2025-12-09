@@ -20,5 +20,6 @@
   "check_correct_dtype": "keys",
   "abort_step_size": 0.1,
   "response_keys": ["space"],
-  "log_file": "results.csv"
+  "log_file": "results.csv",
+  "USE_ARDUINO": false
 }

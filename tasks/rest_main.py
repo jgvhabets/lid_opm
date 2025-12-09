@@ -2,7 +2,7 @@ import pygame
 import json
 import os
 
-from gonogo_task.experiment import run_experiment
+from tasks.rest_experiment import run_experiment
 from utils.lsl_stream import create_lsl_outlet
 
 """
@@ -13,7 +13,7 @@ Variables in config.json:
 
 
 def load_config():
-    config_path = os.path.join(os.path.dirname(__file__), "config_gonogo.json")
+    config_path = os.path.join(os.path.dirname(__file__), "config_rest.json")
 
     with open(config_path, "r") as f:
 
@@ -25,7 +25,7 @@ def main():
     Run Go No-Go task from command line, working directory
     should be repo project root: lid_opm/
 
-    cmd: python -m gonogo_task.main
+    cmd: python -m tasks.rest_main
     """
     # Init pygame
     pygame.init()
@@ -35,11 +35,10 @@ def main():
 
     # detect available displays
     num_displays = pygame.display.get_num_displays()
-    screen_id = min(cfg.get("screen_id", 0), num_displays - 1)
+    screen_id = min(cfg["screen_id"], num_displays - 1)
 
     # get system display resolution
     display_info = pygame.display.Info()
-    # screen_width, screen_height = display_info.current_w, display_info.current_h
 
     # create fullscreen window
     screen = pygame.display.set_mode(
@@ -59,16 +58,16 @@ def main():
     pygame.display.flip()
 
     # Set caption of window
-    pygame.display.set_caption("Go/No-Go Task")
+    pygame.display.set_caption("Rest Task")
 
     # init LSL stream
     outlet = create_lsl_outlet()
 
     # Run experiment
     clock = pygame.time.Clock()
-    run_experiment(screen, cfg, clock, outlet)
+    run_experiment(screen, cfg, clock, outlet,)
     
-    print("Experiment finished. Results saved to", cfg["log_file"])
+    print("Experiment finished.")
 
     pygame.quit()
 
