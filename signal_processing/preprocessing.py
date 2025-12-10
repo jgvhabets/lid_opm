@@ -16,12 +16,12 @@ from mne import create_info
 from mne.io import RawArray
 
 # import custom
-import source_raw_conversion.load_source_opm as source_opm
+import source_raw_conversion.load_PTB_source_opm as PTB_source_opm
 from source_raw_conversion.load_lsl import convert_source_lsl_to_raw
 from utils import load_utils
 from signal_processing import preproc_functions as prepr_funcs
 import signal_processing.epoching as epoching
-
+from source_raw_conversion.load_fieldline_source_opm import get_fieldline_in_mne
 
 @dataclass()
 class rawData_singleRec:
@@ -44,6 +44,8 @@ class rawData_singleRec:
     sub: str
     task: str
     acq: str
+    ses: str = '01'
+    HEALTHY_CONTROL: bool = False
     INCL_AUX: bool = True
     INCL_OPM: bool = False
     OPM_AXES_INCL: list = field(default_factory=lambda: ['Z',])
@@ -59,17 +61,36 @@ class rawData_singleRec:
         # load config for sub and general
         self.sub_config = load_utils.load_subject_config(subject_id=self.sub,)
         self.preproc_config = load_utils.load_preproc_config(version=self.CONFIG_VERSION,)
-        # add means and stddevs to zscore
-        if self.ZSCORE_ACC or self.ZSCORE_EMG:
-            self.aux_zscore_values = get_aux_zscore_values(self=self)
+
+        if not self.HEALTHY_CONTROL:
+            self.source_path = os.path.join(
+                load_utils.get_onedrive_path('source_data'),
+                f'sub-{self.sub}'
+            )
+            self.REC_LOC = self.sub_config['rec_location']
+        
+        else:
+            self.source_path = os.path.join(
+                load_utils.get_onedrive_path('source_data'),
+                f'sub-{self.sub}',
+                f'sub-{self.ses}'
+            )
+            self.REC_LOC = self.sub_config['rec_location'][f'ses-{self.ses}']
+        
+        
 
         if self.INCL_AUX:
             ### load aux, w/o making aux_dat a class attribute to prevent storing of double data
             (
                 temp_auxdat, self.aux_chnames,
                 self.aux_sfreq, self.tasktimings
-            ) = convert_source_lsl_to_raw(self.sub, self.task, self.acq)
+            ) = convert_source_lsl_to_raw(self.sub, self.task, self.acq,
+                                          source_path=self.source_path)
             self.auxtimes = temp_auxdat[:, 0]
+
+            # add means and stddevs to zscore
+            if self.ZSCORE_ACC or self.ZSCORE_EMG:
+                self.aux_zscore_values = get_aux_zscore_values(self=self)
             
             # # add indices from task stimulations, only start indices, corresponding to auxtimes
             # self.aux_task_epochs = add_task_epoch_idx(
@@ -172,13 +193,20 @@ class rawData_singleRec:
             
             # load data per opm axis
             for ax in self.OPM_AXES_INCL:
-                axdata, axtimes = source_opm.select_and_store_axis_data(
-                    AX=ax, ACQ=self.acq, TASK=self.task,
-                    sub_config=self.sub_config, LOAD=True,
-                )
-                rawmne = source_opm.load_raw_opm_into_mne(
-                    meg_data=axdata, AX=ax, sub_config=self.sub_config,
-                )
+
+                if self.REC_LOC == 'PTB':
+                    axdata, axtimes = PTB_source_opm.select_and_store_axis_data(
+                        AX=ax, ACQ=self.acq, TASK=self.task,
+                        sub_config=self.sub_config, LOAD=True,
+                    )
+                    rawmne = PTB_source_opm.load_raw_opm_into_mne(
+                        meg_data=axdata, AX=ax, sub_config=self.sub_config,
+                    )
+
+                elif self.REC_LOC == 'CCM':
+                    # TODO FIX
+                    rawmne = get_fieldline_in_mne(self.sub, self.ses, self.acq)
+
                 # currently one time axis for all opm axes
                 self.opmrec_times = axtimes
                 setattr(self, f'OPM_{ax}', rawmne)
@@ -301,7 +329,7 @@ def get_aux_zscore_values(self,):
     
     else:
 
-        tempdict = get_aux_zscore_values(SUB=self.SUB, RETURN=True,)
+        tempdict = get_aux_zscore_variables(SUB=self.SUB, RETURN=True,)
         
     return tempdict
 

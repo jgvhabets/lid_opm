@@ -11,13 +11,13 @@ from source_raw_conversion.time_syncing import cut_data_to_task_timing
 
 
 def extract_opm_sourcedata(sub_config, ACQ, TASK,
+                           source_path,
                            STORE_TRIGGER_TIMES=True,):
 
     SUB = sub_config["subject_id"][-2:]
 
     # define paths
-    sub_opm_path = os.path.join(get_onedrive_path('source_data'),
-                                f'sub-{SUB}', 'opm')
+    sub_opm_path = os.path.join(source_path, 'opm')
     opm_folders = os.listdir(sub_opm_path)  # get available files
     
     # get meg file for task and acquisition

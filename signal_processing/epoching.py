@@ -4,10 +4,9 @@ in raw mne-Objects
 """
 
 import numpy as np
-import mne
-
-
-
+from mne import Epochs
+from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
 
 def get_mne_event_array(self, dType: str):
 
@@ -76,19 +75,19 @@ def get_epochs(acqClass, TMIN=-1, TMAX=3):
 
 
 
-    emg_epochs = mne.Epochs(
+    emg_epochs = Epochs(
         raw=acqClass.EMG, events=acqClass.aux_event_arr,
         event_id=acqClass.aux_event_codes,
         tmin=TMIN, tmax=TMAX, baseline=None, preload=True,
         reject=None,
     )
-    acc_epochs = mne.Epochs(
+    acc_epochs = Epochs(
         raw=acqClass.ACC, events=acqClass.aux_event_arr,
         event_id=acqClass.aux_event_codes,
         tmin=TMIN, tmax=TMAX, baseline=None, preload=True,
         reject=None,
     )
-    opm_epochs = mne.Epochs(
+    opm_epochs = Epochs(
         raw=acqClass.OPM_Z, events=acqClass.opm_event_arr,
         event_id=acqClass.opm_event_codes,
         tmin=TMIN, tmax=TMAX, baseline=None, preload=True,
@@ -96,3 +95,56 @@ def get_epochs(acqClass, TMIN=-1, TMAX=3):
     )
 
     return opm_epochs, emg_epochs, acc_epochs
+
+
+def find_arduino_triggers(trigger_signal, timestamps, PLOT_CHECK: bool = False):
+
+    # find trigger start and end times
+    diff_trigger = np.diff(trigger_signal)
+
+    pos_peaks, pos_peaks_props = find_peaks(diff_trigger, height=1, distance=10,)
+    neg_peaks, neg_peaks_props = find_peaks(-1 * diff_trigger, height=1, distance=10,)
+    
+    trig_times_starts = timestamps[pos_peaks]
+    trig_times_ends = timestamps[neg_peaks]
+
+    if PLOT_CHECK:
+        plt.plot(timestamps, trigger_signal)
+
+        plt.scatter(trig_times_starts, [3.5] * len(pos_peaks), color='purple',)
+        plt.scatter(trig_times_ends, [3.5] * len(neg_peaks), color='orange',)
+
+        plt.show()
+
+
+    # attribute triggers with task-types based on schedule
+    TRIGGER_SCHEME = {'go': 0.05, 'nogo': .15, 'abort': .3}  # TODO: import from json used for sending triggers during task
+
+    trigger_times, trigger_types = [], []  # to store
+
+    TRIG_ACTIVE = False  # start with, activate when first trigger duration (always .1) is found
+
+
+    for t1, t2 in zip(trig_times_starts, trig_times_ends):
+        # calculate duration between start and end
+        dur = round(t2 - t1, 2)
+        # if START-duration is found, and no trigger is ongoing, activate trigger and save start time
+        if dur == .1 and not TRIG_ACTIVE:
+            TRIG_ACTIVE = True
+            temp_t = t1
+            continue
+        # if trigger is activated
+        if TRIG_ACTIVE:
+            # compare which 2nd duration is matching
+            for trig_key, trig_dur in list(TRIGGER_SCHEME.items()):
+                # double check whether a trigger duration was already matched and trigger deactivated
+                if TRIG_ACTIVE:
+                    # if trigger gets matched: add time and type, and deactivate trigger-bool
+                    if dur == trig_dur:
+                        trigger_types.append(trig_key)
+                        trigger_times.append(temp_t)
+                        TRIG_ACTIVE = False
+                        temp_t = None
+    
+    return trigger_times, trigger_types
+

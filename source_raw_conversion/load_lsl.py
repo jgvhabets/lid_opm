@@ -16,7 +16,7 @@ from utils.load_utils import (
 )
 import source_raw_conversion.time_syncing as sync
 
-def get_source_streams(SUB, ACQ, TASK):
+def get_source_streams(SUB, ACQ, TASK, source_path):
     """
     Input:
     - SUB
@@ -28,8 +28,7 @@ def get_source_streams(SUB, ACQ, TASK):
     - fileheader
     """
 
-    lsl_source_path = os.path.join(get_onedrive_path('source_data'),
-                                   f'sub-{SUB}', 'lsl')
+    lsl_source_path = os.path.join(source_path, 'lsl')
     # gets folder with defined task and acquisition
     try:
         sel_folder = [f for f in os.listdir(lsl_source_path)
@@ -92,14 +91,14 @@ def define_streams(streams):
     return AN_DATA, AN_MRK, PYGAME
 
 
-def convert_source_lsl_to_raw(SUB, TASK, ACQ):
+def convert_source_lsl_to_raw(SUB, TASK, ACQ, source_path):
 
     # load config and meta info
     sub_config = load_subject_config(subject_id=SUB,)
     sub_meta_info = get_sub_rec_metainfo(config_sub=sub_config)
 
     # load and define source lsl streams
-    streams, fileheader = get_source_streams(SUB, ACQ, TASK)
+    streams, fileheader = get_source_streams(SUB, ACQ, TASK, source_path)
     lsldat, lslmrk, lslpyg = define_streams(streams)
 
     # compare timing opm and lsl
