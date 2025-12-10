@@ -3,14 +3,21 @@
   "rec_location": "CCM",
   "data_types": ["source_data", "raw_data", "processed_data"],
   "setups": ["setup1"],
-  "tasks": [
-    "emptyroom",
-    "emptyroom2",
-    "emptyroompluscamera",
-    "restfederico1",
-    "behavfederico1",
-    "withemgacc"
-  ],
+  "tasks": {
+    "ses-Sep": [
+      "emptyroom",
+      "emptyroom2",
+      "emptyroompluscamera",
+      "restfederico1",
+      "behavfederico1",
+      "withemgacc"
+    ],
+    "ses-Dec": [
+      "testArdgonogo1",
+      "testArdgonogo2",
+      "testArdgonogo3"
+    ]
+  },
   "timestamps": {
     "emptyroom": "20250911_115229",
     "emptyroom2": "20250911_122740",

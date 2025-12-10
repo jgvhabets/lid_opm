@@ -64,11 +64,16 @@ def get_onedrive_path(folder: str = 'project',):
     elif folder == 'results': return os.path.join(project_path, 'results')
 
 
-def load_subject_config(subject_id: str, config_dir: str = '../configs',) -> Dict[str, Any]:
+def load_subject_config(subject_id: str,):
     """
     Load configuration file for a specific subject and version.
     """
-    config_file = os.path.join(config_dir, f'config_sub{subject_id}.json')
+    # convert sub-XX to only XX if necessary
+    if 'sub' in subject_id: subject_id = subject_id.replace('sub', '')
+    if '-' in subject_id: subject_id = subject_id.replace('-', '')
+
+    repo_path = get_lid_opm_repo_path()
+    config_file = os.path.join(repo_path, 'configs', f'config_sub-{subject_id}.json')
     
     if not os.path.exists(config_file):
         raise FileNotFoundError(f"Configuration file not found: {config_file}")
@@ -95,11 +100,12 @@ def get_sub_rec_metainfo(config_sub):
 
 
 
-def load_preproc_config(version: str, config_dir: str = '../configs',) -> Dict[str, Any]:
+def load_preproc_config(version: str = 'v1',):
     """
     Load preproc setting configurations for a version.
     """
-    config_file = os.path.join(config_dir, f'preproc_settings_{version}.json')
+    repo_path = get_lid_opm_repo_path()
+    config_file = os.path.join(repo_path, 'configs', f'preproc_settings_{version}.json')
     
     if not os.path.exists(config_file):
         raise FileNotFoundError(f"Configuration file not found: {config_file}")
@@ -111,3 +117,15 @@ def load_preproc_config(version: str, config_dir: str = '../configs',) -> Dict[s
         raise json.JSONDecodeError(f"Invalid JSON in config file {config_file}: {e}")
     
     return config
+
+
+def get_lid_opm_repo_path():
+    path = os.getcwd()
+
+    for _ in range(10):  # set max 10 iterations for while
+        while not path.endswith('lid_opm'):
+            path = os.path.dirname(path)  # go one folder higher
+
+    # if path ends with lid_opm -> main repo folder reached
+
+    return path
