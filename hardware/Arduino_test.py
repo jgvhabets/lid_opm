@@ -1,5 +1,4 @@
 import pyfirmata
-from pyfirmata import util
 import time
 
 #i = 0
