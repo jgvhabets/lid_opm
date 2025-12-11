@@ -16,6 +16,7 @@ from utils.load_utils import (
 )
 import source_raw_conversion.time_syncing as sync
 
+
 def get_source_streams(SUB, ACQ, TASK, source_path):
     """
     Input:
@@ -32,15 +33,21 @@ def get_source_streams(SUB, ACQ, TASK, source_path):
     # gets folder with defined task and acquisition
     try:
         sel_folder = [f for f in os.listdir(lsl_source_path)
-                      if ACQ in f.lower() and TASK in f.lower()][0]
+                      if ACQ.lower() in f.lower() and TASK.lower() in f.lower()][0]
     except IndexError:
         raise ValueError(f'IndexError catched, no folder for sub-{SUB, ACQ, TASK}')
     
-    sel_path = os.path.join(lsl_source_path, sel_folder, 'eeg')  # convert to path
-    sel_fname = sel_f = [f for f in os.listdir(sel_path)][0]
+    if sel_folder.endswith('xdf'):
+        sel_path = os.path.join(lsl_source_path, sel_folder)
+    
+    elif 'eeg' in os.listdir(os.path.join(lsl_source_path, sel_folder)):
+    
+        sel_path = os.path.join(lsl_source_path, sel_folder, 'eeg')  # convert to path
+        sel_fname = [f for f in os.listdir(sel_path)][0]
+        sel_path = os.path.join(sel_path, sel_fname)
 
     # load defined LSL file
-    streams, fileheader = pyxdf.load_xdf(os.path.join(sel_path, sel_fname, ))
+    streams, fileheader = pyxdf.load_xdf(sel_path)
 
     return streams, fileheader
 
@@ -91,26 +98,29 @@ def define_streams(streams):
     return AN_DATA, AN_MRK, PYGAME
 
 
-def convert_source_lsl_to_raw(SUB, TASK, ACQ, source_path):
+def convert_source_lsl_to_raw(SUB, TASK, ACQ, source_path, HEALTHY=False,
+                              COMPARE_OPM_ANT_TRIGGERS=False,):
 
     # load config and meta info
     sub_config = load_subject_config(subject_id=SUB,)
-    sub_meta_info = get_sub_rec_metainfo(config_sub=sub_config)
+    if not HEALTHY:
+        sub_meta_info = get_sub_rec_metainfo(config_sub=sub_config)
 
     # load and define source lsl streams
     streams, fileheader = get_source_streams(SUB, ACQ, TASK, source_path)
     lsldat, lslmrk, lslpyg = define_streams(streams)
 
     # compare timing opm and lsl
-    (meg_trigger_diffs,
-     meg_time_trigger0) = sync.get_meg_trigger_diffs(SUB=SUB, ACQ=ACQ, TASK=TASK,
-                                                     RETURN_MEGTIME_TRIGGER0=True)
-    (sync_diffs,
-     lsl_t_trigger0,
-     lsl_clock_t0) = sync.compare_triggers(
-        mrk_stream=lslmrk, lsl_header=fileheader,
-        meg_trigger_diffs=meg_trigger_diffs
-    )
+    if COMPARE_OPM_ANT_TRIGGERS:
+        (meg_trigger_diffs,
+        meg_time_trigger0) = sync.get_meg_trigger_diffs(SUB=SUB, ACQ=ACQ, TASK=TASK,
+                                                        RETURN_MEGTIME_TRIGGER0=True)
+        (sync_diffs,
+        lsl_t_trigger0,
+        lsl_clock_t0) = sync.compare_triggers(
+            mrk_stream=lslmrk, lsl_header=fileheader,
+            meg_trigger_diffs=meg_trigger_diffs
+        )
 
 
     ### LSL AntNeuro Data
@@ -143,6 +153,7 @@ def convert_antneuro_stream(lsldat, lsl_t_trigger0, meg_t_trigger0,
     
     # try to load ant-neur values
     fpath = os.path.join(get_onedrive_path('raw_data'), f'sub-{SUB}', 'emgacc')
+    if not os.path.exists(fpath): os.makedirs(fpath)
     fname = f'rawAligned_sub-{SUB}_{TASK}_{ACQ}.npy'
     jsonname = f'chInfo_sub-{SUB}_{TASK}_{ACQ}.json'
     if fname in os.listdir(fpath):

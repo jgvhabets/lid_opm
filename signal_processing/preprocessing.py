@@ -73,7 +73,7 @@ class rawData_singleRec:
             self.source_path = os.path.join(
                 load_utils.get_onedrive_path('source_data'),
                 f'sub-{self.sub}',
-                f'sub-{self.ses}'
+                f'ses-{self.ses}'
             )
             self.REC_LOC = self.sub_config['rec_location'][f'ses-{self.ses}']
         
@@ -81,11 +81,18 @@ class rawData_singleRec:
 
         if self.INCL_AUX:
             ### load aux, w/o making aux_dat a class attribute to prevent storing of double data
+            if self.INCL_OPM:
+                COMPARE_OPM_ANT_TRIGGERS = True
+            else:
+                COMPARE_OPM_ANT_TRIGGERS = False
+                
             (
                 temp_auxdat, self.aux_chnames,
                 self.aux_sfreq, self.tasktimings
             ) = convert_source_lsl_to_raw(self.sub, self.task, self.acq,
-                                          source_path=self.source_path)
+                                          source_path=self.source_path,
+                                          HEALTHY=self.HEALTHY_CONTROL,
+                                          COMPARE_OPM_ANT_TRIGGERS=COMPARE_OPM_ANT_TRIGGERS,)
             self.auxtimes = temp_auxdat[:, 0]
 
             # add means and stddevs to zscore
