@@ -7,10 +7,100 @@ and to allign all timeseries to 1) opm-time, and
 import datetime as dt
 import os
 import numpy as np
+from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
 
 from utils.load_utils import get_onedrive_path
 
 
+TRIGGER_SCHEME = {
+    'start_pulse': 0.1,
+    'go': 0.05,
+    'nogo': .15,
+    'abort': .3
+}  # TODO: import from json used for sending triggers during task
+
+
+def find_arduino_triggers(raw_mne_opm, PLOT_CHECK: bool = False):
+    """
+    only works in fieldline data so far bcs antneuro doesnot capture
+    the duration of the pulses, only the onset
+    """
+    # find trigger start and end times
+    idx_trig = np.where([t == 'stim' for t in raw_mne_opm.get_channel_types()])[0][0]
+    trigger = raw_mne_opm.get_data()[idx_trig]
+    diff_trigger = np.diff(trigger)
+
+    pos_peaks, pos_peaks_props = find_peaks(diff_trigger, height=1, distance=10,)
+    neg_peaks, neg_peaks_props = find_peaks(-1 * diff_trigger, height=1, distance=10,)
+    
+    trig_times_starts = raw_mne_opm.times[pos_peaks]
+    trig_times_ends = raw_mne_opm.times[neg_peaks]
+
+    if PLOT_CHECK:
+        plt.plot(raw_mne_opm.times, trigger)
+
+        plt.scatter(trig_times_starts, [3.5] * len(pos_peaks), color='purple',)
+        plt.scatter(trig_times_ends, [3.5] * len(neg_peaks), color='orange',)
+
+        plt.show()
+
+
+    # attribute triggers with task-types based on schedule
+
+    trigger_times, trigger_types = [], []  # to store
+
+    TRIG_ACTIVE = False  # start with, activate when first trigger duration (always .1) is found
+
+
+    for t1, t2 in zip(trig_times_starts, trig_times_ends):
+        # calculate duration between start and end
+        dur = round(t2 - t1, 2)
+        # if START-duration is found, and no trigger is ongoing, activate trigger and save start time
+        if dur == TRIGGER_SCHEME['start_pulse'] and not TRIG_ACTIVE:
+            TRIG_ACTIVE = True
+            temp_t = t1
+            continue
+        # if trigger is activated
+        if TRIG_ACTIVE:
+            # compare which 2nd duration is matching
+            for trig_key, trig_dur in list(TRIGGER_SCHEME.items()):
+                # double check whether a trigger duration was already matched and trigger deactivated
+                if TRIG_ACTIVE:
+                    # if trigger gets matched: add time and type, and deactivate trigger-bool
+                    if dur == trig_dur:
+                        trigger_types.append(trig_key)
+                        trigger_times.append(temp_t)
+                        TRIG_ACTIVE = False
+                        temp_t = None
+    
+    return trigger_times, trigger_types
+
+
+def get_antneuro_arduino_times(lsldat):
+    """
+    find starting times for indices in antneuro data,
+    recorded via lsl
+    """
+
+    lsl_rec_timestamps = lsldat['time_stamps'] - lsldat['time_stamps'][0]
+
+    an_channeldicts_list = lsldat['info']['desc'][0]['channels'][0]['channel']
+
+    AN_ch_trig_sel = [chdict['type'][0] == 'trigger' for chdict in an_channeldicts_list]
+    AN_trig_dat = np.array(lsldat['time_series'][:, AN_ch_trig_sel])
+
+    AN_trig_idx = np.where(AN_trig_dat > .5)[0][::2]
+    AN_trig_times = lsl_rec_timestamps[AN_trig_idx]
+
+    ### for potential internal check
+    # plt.plot(lsl_rec_timestamps, AN_trig_dat)
+
+    # plt.scatter(AN_trig_times, [1] * len(AN_trig_idx))
+
+    # plt.show()
+
+    return AN_trig_times
 
 
 def get_meg_trigger_diffs(SUB, TASK, ACQ, RETURN_MEGTIME_TRIGGER0=True,):

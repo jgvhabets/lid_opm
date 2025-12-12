@@ -85,14 +85,14 @@ class rawData_singleRec:
                 COMPARE_OPM_ANT_TRIGGERS = True
             else:
                 COMPARE_OPM_ANT_TRIGGERS = False
-                
+
             (
                 temp_auxdat, self.aux_chnames,
                 self.aux_sfreq, self.tasktimings
-            ) = convert_source_lsl_to_raw(self.sub, self.task, self.acq,
+            ) = convert_source_lsl_to_raw(SUB=self.sub, TASK=self.task, ACQ=self.acq, SES=self.ses,
                                           source_path=self.source_path,
                                           HEALTHY=self.HEALTHY_CONTROL,
-                                          COMPARE_OPM_ANT_TRIGGERS=COMPARE_OPM_ANT_TRIGGERS,)
+                                          REC_LOC=self.REC_LOC,)
             self.auxtimes = temp_auxdat[:, 0]
 
             # add means and stddevs to zscore

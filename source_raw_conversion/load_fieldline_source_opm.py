@@ -6,6 +6,8 @@ from utils.load_utils import get_onedrive_path
 
 def find_source_fl_file(SUB, SES, TASK, ACQ,):
 
+    if len(SUB) == 2: SUB = 'sub-' + SUB
+
     # find filepath
     ses_path = os.path.join(
         get_onedrive_path('source_data'),

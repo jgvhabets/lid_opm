@@ -8,6 +8,7 @@ import os
 import pyxdf
 import numpy as np
 import json
+import datetime as dt
 
 from utils.load_utils import (
     get_onedrive_path,
@@ -15,6 +16,8 @@ from utils.load_utils import (
     get_sub_rec_metainfo
 )
 import source_raw_conversion.time_syncing as sync
+from source_raw_conversion.load_fieldline_source_opm import get_fieldline_in_mne
+from plotting.sync_checking import plot_check_trigger_distances_AN_FL
 
 
 def get_source_streams(SUB, ACQ, TASK, source_path):
@@ -98,36 +101,62 @@ def define_streams(streams):
     return AN_DATA, AN_MRK, PYGAME
 
 
-def convert_source_lsl_to_raw(SUB, TASK, ACQ, source_path, HEALTHY=False,
-                              COMPARE_OPM_ANT_TRIGGERS=False,):
+def convert_source_lsl_to_raw(SUB, TASK, ACQ, SES, source_path, HEALTHY=False,
+                              REC_LOC=False,):
 
     # load config and meta info
     sub_config = load_subject_config(subject_id=SUB,)
     if not HEALTHY:
         sub_meta_info = get_sub_rec_metainfo(config_sub=sub_config)
+    else:
+        sub_meta_info = None
 
     # load and define source lsl streams
     streams, fileheader = get_source_streams(SUB, ACQ, TASK, source_path)
     lsldat, lslmrk, lslpyg = define_streams(streams)
 
     # compare timing opm and lsl
-    if COMPARE_OPM_ANT_TRIGGERS:
+    if REC_LOC == 'PTB':
         (meg_trigger_diffs,
-        meg_time_trigger0) = sync.get_meg_trigger_diffs(SUB=SUB, ACQ=ACQ, TASK=TASK,
+         meg_time_trigger0) = sync.get_meg_trigger_diffs(SUB=SUB, ACQ=ACQ, TASK=TASK,
                                                         RETURN_MEGTIME_TRIGGER0=True)
         (sync_diffs,
-        lsl_t_trigger0,
-        lsl_clock_t0) = sync.compare_triggers(
+         lsl_t_trigger0,
+         lsl_clock_t0) = sync.compare_triggers(
             mrk_stream=lslmrk, lsl_header=fileheader,
             meg_trigger_diffs=meg_trigger_diffs
         )
+        meg_trigger_types = None
 
+    elif REC_LOC == 'CCM':
+        # get trigger timings and behavioral-types from fieldline data
+        raw = get_fieldline_in_mne(SUB=SUB, SES=SES, ACQ=ACQ, TASK=TASK)
+        idx_trig = np.where([t == 'stim' for t in raw.get_channel_types()])[0][0]
+        trigger = raw.get_data()[idx_trig]
+        (meg_trigger_times, meg_trigger_types) = sync.find_arduino_triggers(raw_mne_opm=raw)
+        meg_time_trigger0 = meg_trigger_times[0]
+        # get trigger timings in antneuro/lsl data
+        AN_trig_times = sync.get_antneuro_arduino_times(lsldat)
+        lsl_t_trigger0 = AN_trig_times[0]
+        # get start time of lsl recording
+        if "datetime" in fileheader['info']:
+            lsl_clock_t0 = fileheader['info']['datetime'][0]
+            lsl_clock_t0 = dt.datetime.strptime(lsl_clock_t0, "%Y-%m-%dT%H:%M:%S%z")
+            print(f'found lsl starttime: {lsl_clock_t0}')
+
+        # plot comparison of trigger intervals
+        plot_check_trigger_distances_AN_FL(
+            SUB, SES, ACQ, TASK, AN_trig_times=AN_trig_times,
+            FL_trigger_times=meg_trigger_times,
+        )
+        
 
     ### LSL AntNeuro Data
     (auxdat, aux_chnames, aux_sfreq) = convert_antneuro_stream(
         lsldat, lsl_t_trigger0, meg_time_trigger0,
         SUB, ACQ, TASK, sub_meta_info, sub_config,
         lsl_clock_t0=lsl_clock_t0,
+        HEALTHY=HEALTHY,
     )
 
 
@@ -149,7 +178,7 @@ def convert_source_lsl_to_raw(SUB, TASK, ACQ, source_path, HEALTHY=False,
 
 def convert_antneuro_stream(lsldat, lsl_t_trigger0, meg_t_trigger0,
                             SUB, ACQ, TASK, sub_meta_info, sub_config,
-                            lsl_clock_t0,):
+                            lsl_clock_t0, HEALTHY: bool = False,):
     
     # try to load ant-neur values
     fpath = os.path.join(get_onedrive_path('raw_data'), f'sub-{SUB}', 'emgacc')
@@ -193,14 +222,18 @@ def convert_antneuro_stream(lsldat, lsl_t_trigger0, meg_t_trigger0,
 
     auxdat = np.array(lsldat['time_series'][:, ch_aux_sel])
 
-    auxdat, auxtimes = sync.cut_data_to_task_timing(
-        tempdata=auxdat,
-        temptimes=an_times_inmeg,
-        sub_meta=sub_meta_info,
-        TASK=TASK,
-        ACQ=ACQ,
-        SFREQ=aux_sfreq,
-    )
+    if not HEALTHY:
+        auxdat, auxtimes = sync.cut_data_to_task_timing(
+            tempdata=auxdat,
+            temptimes=an_times_inmeg,
+            sub_meta=sub_meta_info,
+            TASK=TASK,
+            ACQ=ACQ,
+            SFREQ=aux_sfreq,
+        )
+    else:
+        auxtimes = an_times_inmeg
+
     # merge aligned time and data
     auxdat = np.concatenate([auxtimes[:, np.newaxis], auxdat], axis=1)
     aux_chnames = ['aligned_time',] + aux_chnames
