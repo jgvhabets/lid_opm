@@ -1,8 +1,9 @@
 import os
 from mne.io import read_raw_fif
+import numpy as np
 
 from utils.load_utils import get_onedrive_path
-
+from source_raw_conversion.time_syncing import find_arduino_triggers
 
 def find_source_fl_file(SUB, SES, TASK, ACQ,):
 
@@ -24,15 +25,26 @@ def find_source_fl_file(SUB, SES, TASK, ACQ,):
     return file_path
 
 
-def get_fieldline_in_mne(SUB, SES, TASK, ACQ):
+def get_fieldline_in_mne(SUB, SES, TASK, ACQ, CROP_RETURN_TRIGGERS=False,):
 
     source_filepath = find_source_fl_file(SUB, SES, TASK, ACQ)
     raw = read_raw_fif(source_filepath, preload=True, verbose=True)
 
-    # Display the data header (raw.info)
-    print("\n" + "="*60)
-    print("DATA HEADER:")
-    print("="*60)
-    print(raw.info)
+    # crop between 2nd and last trigger
+    if CROP_RETURN_TRIGGERS:
+        (FL_trigger_times, FL_trigger_types) = find_arduino_triggers(raw_mne_opm=raw)
+         raw_cropped = raw.copy().crop(tmin=FL_trigger_times[1], tmax=FL_trigger_times[-1])
+        # adjust triggers accodingly
+        FL_trigger_times = np.array(FL_trigger_times) - FL_trigger_times[1]
+        FL_trigger_types = FL_trigger_types[1:-1]
 
-    return raw
+        return raw, FL_trigger_times, FL_trigger_times
+
+    else:
+        # Display the data header (raw.info)
+        print("\n" + "="*60)
+        print("DATA HEADER:")
+        print("="*60)
+        print(raw.info)
+
+        return raw

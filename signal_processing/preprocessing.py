@@ -22,6 +22,7 @@ from utils import load_utils
 from signal_processing import preproc_functions as prepr_funcs
 import signal_processing.epoching as epoching
 from source_raw_conversion.load_fieldline_source_opm import get_fieldline_in_mne
+from source_raw_conversion.time_syncing import get_antneuro_arduino_times
 
 @dataclass()
 class rawData_singleRec:
@@ -85,7 +86,7 @@ class rawData_singleRec:
                 COMPARE_OPM_ANT_TRIGGERS = True
             else:
                 COMPARE_OPM_ANT_TRIGGERS = False
-
+            # data is here alligned and cut to triggers and opm
             (
                 temp_auxdat, self.aux_chnames,
                 self.aux_sfreq, self.tasktimings
@@ -187,12 +188,17 @@ class rawData_singleRec:
         
 
             ### ADD EPOCHING AFTER SIGNAL PREPROCESSING
-            # add indices from task stimulations, including 1-sec prior and 1-sec post!!
-            self.aux_task_epochs = epoching.add_task_epoch_idx(
-                self=self, times_to_use=self.auxtimes, sfreq=self.aux_sfreq
-            )
-            # create array to mark event epochs
-            self.aux_event_codes, self.aux_event_arr = epoching.get_mne_event_array(self, dType='AUX')
+            if self.HEALTHY_CONTROL:
+                # AN_trig_times = get_antneuro_arduino_times(lsldat)
+                print('TODO: EPOCHING ANTNEURO')
+
+            else:
+                # add indices from task stimulations, including 1-sec prior and 1-sec post!!
+                self.aux_task_epochs = epoching.add_task_epoch_idx(
+                    self=self, times_to_use=self.auxtimes, sfreq=self.aux_sfreq
+                )
+                # create array to mark event epochs
+                self.aux_event_codes, self.aux_event_arr = epoching.get_mne_event_array(self, dType='AUX')
 
 
         #####
@@ -209,15 +215,22 @@ class rawData_singleRec:
                     rawmne = PTB_source_opm.load_raw_opm_into_mne(
                         meg_data=axdata, AX=ax, sub_config=self.sub_config,
                     )
+                    
 
                 elif self.REC_LOC == 'CCM':
-                    # TODO FIX
-                    rawmne = get_fieldline_in_mne(self.sub, self.ses, self.acq)
+                    # TODO DOUBLE CHECK
+                    (
+                        rawmne, fl_trigger_times, fl_trigger_types
+                    ) = get_fieldline_in_mne(
+                        SUB=self.sub, SES=self.ses, ACQ=self.acq, TASK=self.task,
+                        CROP_RETURN_TRIGGERS=True,
+                    )
+                    axtimes = rawmne.times
 
                 # currently one time axis for all opm axes
-                self.opmrec_times = axtimes
-                setattr(self, f'OPM_{ax}', rawmne)
 
+                setattr(self, f'OPM_{ax}', rawmne)
+                self.opmrec_times = axtimes
                 # preprocess opm axis
                 preprocess_opm(self, axis=ax,)
 

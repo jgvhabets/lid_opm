@@ -120,6 +120,7 @@ def convert_source_lsl_to_raw(SUB, TASK, ACQ, SES, source_path, HEALTHY=False,
         (meg_trigger_diffs,
          meg_time_trigger0) = sync.get_meg_trigger_diffs(SUB=SUB, ACQ=ACQ, TASK=TASK,
                                                         RETURN_MEGTIME_TRIGGER0=True)
+        meg_trigger_times = [meg_time_trigger0 + tdiff for tdiff in meg_trigger_diffs]
         (sync_diffs,
          lsl_t_trigger0,
          lsl_clock_t0) = sync.compare_triggers(
@@ -131,8 +132,6 @@ def convert_source_lsl_to_raw(SUB, TASK, ACQ, SES, source_path, HEALTHY=False,
     elif REC_LOC == 'CCM':
         # get trigger timings and behavioral-types from fieldline data
         raw = get_fieldline_in_mne(SUB=SUB, SES=SES, ACQ=ACQ, TASK=TASK)
-        idx_trig = np.where([t == 'stim' for t in raw.get_channel_types()])[0][0]
-        trigger = raw.get_data()[idx_trig]
         (meg_trigger_times, meg_trigger_types) = sync.find_arduino_triggers(raw_mne_opm=raw)
         meg_time_trigger0 = meg_trigger_times[0]
         # get trigger timings in antneuro/lsl data
@@ -149,11 +148,13 @@ def convert_source_lsl_to_raw(SUB, TASK, ACQ, SES, source_path, HEALTHY=False,
             SUB, SES, ACQ, TASK, AN_trig_times=AN_trig_times,
             FL_trigger_times=meg_trigger_times,
         )
+
+
         
 
-    ### LSL AntNeuro Data
+    ### LSL AntNeuro Data (CUT internally on second and last trigger)
     (auxdat, aux_chnames, aux_sfreq) = convert_antneuro_stream(
-        lsldat, lsl_t_trigger0, meg_time_trigger0,
+        lsldat, lsl_t_trigger0, meg_trigger_times,
         SUB, ACQ, TASK, sub_meta_info, sub_config,
         lsl_clock_t0=lsl_clock_t0,
         HEALTHY=HEALTHY,
@@ -176,7 +177,7 @@ def convert_source_lsl_to_raw(SUB, TASK, ACQ, SES, source_path, HEALTHY=False,
 
 
 
-def convert_antneuro_stream(lsldat, lsl_t_trigger0, meg_t_trigger0,
+def convert_antneuro_stream(lsldat, lsl_t_trigger0, meg_trigger_times,
                             SUB, ACQ, TASK, sub_meta_info, sub_config,
                             lsl_clock_t0, HEALTHY: bool = False,):
     
@@ -200,7 +201,8 @@ def convert_antneuro_stream(lsldat, lsl_t_trigger0, meg_t_trigger0,
     
         return auxdat, chnames, sfreq
     
-    
+    meg_t_trigger0 = meg_trigger_times[0]
+
     # convert lsl times into meg-time alligning
     an_times_inmeg, clocktime_megt0 = sync.convert_lsltimes_to_megtimes_sec(
         lsltimestamps=lsldat['time_stamps'],
@@ -237,6 +239,13 @@ def convert_antneuro_stream(lsldat, lsl_t_trigger0, meg_t_trigger0,
     # merge aligned time and data
     auxdat = np.concatenate([auxtimes[:, np.newaxis], auxdat], axis=1)
     aux_chnames = ['aligned_time',] + aux_chnames
+
+    ### cut on triggers (between second and last, TODO: replace with START and END triggers)
+    idx_start = np.where(auxtimes == meg_trigger_times[1])[0][0]
+    idx_end = np.where(auxtimes == meg_trigger_times[-1])[0][0]
+    print(f'CUT LSL DATA from {meg_trigger_times[1]} to {meg_trigger_times[-1]}'
+          f' on indices: {idx_start, idx_end}, orig shape: {auxdat.shape}')
+    auxdat = auxdat[idx_start:idx_end, :]
 
     ## storing
     auxdat = np.save(os.path.join(fpath, fname), auxdat)
