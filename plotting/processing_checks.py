@@ -4,8 +4,73 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from itertools import product
+from mne.viz import plot_topomap
+import math
 
 from utils.load_utils import get_onedrive_path
+
+def plot_ica_topomaps_Z(raw, ica, batch_size=10, colormap='RdBu_r'):
+    """
+    Plot ICA components as topomaps for selected good Z channels, displaying them in batches.
+    """
+
+    # Get good channels
+    all_channels = raw.info['ch_names']
+    bad_channels = raw.info['bads']
+    good_channels = [ch for ch in all_channels if ch not in bad_channels]
+
+    # Get Z channels
+    Z_channels = [ch_name for ch_name in raw.ch_names if '_bz' in ch_name]
+
+    # Keep only good Z channels
+    Z_good_channels = [ch for ch in Z_channels if ch in good_channels]
+
+    # Get ICA channel names
+    ica_channels = ica.info['ch_names']
+
+    # Indices of Z good channels in ICA
+    Z_good_ica_picks = [ica_channels.index(ch) for ch in Z_good_channels]
+
+    # Use only info (no data copy) for plotting
+    raw_info_Z = raw.copy().pick_channels(Z_good_channels).info
+
+    # Get ICA components
+    ica_data = ica.get_components()
+    num_components = ica.n_components_
+
+    # Suppress interactive rendering
+    plt.ioff()
+
+    # Loop through components in batches
+    for i in range(0, num_components, batch_size):
+        num_subplots = min(batch_size, num_components - i)
+        rows = int(math.ceil(num_subplots / 6))  # 6 columns
+        cols = 6
+
+        fig, axes = plt.subplots(rows, cols, figsize=(7, 12))
+        axes = axes.ravel()
+
+        for idx, comp in enumerate(range(i, min(i + batch_size, num_components))):
+            comp_data = ica_data[Z_good_ica_picks, comp]
+            ax = axes[idx]
+
+            plot_topomap(comp_data, raw_info_Z, axes=ax, show=False,
+                         size=3, cmap=colormap)
+
+            ax.text(-0.2, 0.5, f'{comp}', transform=ax.transAxes,
+                    fontsize=6, va='center', ha='right')
+
+        # Hide unused axes
+        for j in range(idx + 1, len(axes)):
+            axes[j].axis('off')
+
+        plt.tight_layout()
+
+    # Render all figures at once
+    plt.show()
+    plt.ion()
+
+
 
 def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
 
@@ -107,3 +172,59 @@ def plot_emgacc_check_for_tasks(recRaw, SAVE=False, SHOW=True,):
 
 
 
+def plot_channels_comparison(
+    time_0, time_1, raw_channels, filtered_channels, raw_labels, filtered_labels, colors, 
+    rec_label, y_label, axis_label, sync_ylim, show_legend=True
+):
+    """
+    Plot comparison between raw and filtered MEG channels in stacked subplots.
+    
+    Creates two stacked subplots comparing raw and filtered versions
+    of the same channels with matching colors and labels.
+    
+    Args:
+        time: Time vector for x-axis
+        raw_channels: List of raw channel signals
+        filtered_channels: List of filtered channel signals
+        raw_labels: List of labels for raw channels
+        filtered_labels: List of labels for filtered channels
+        colors: List of colors for channel plotting
+        rec_label: Recording label for titles
+        y_label: Y-axis label (default: "Amplitude (pT)")
+        axis_label: Axis component label (default: "X")
+        sync_ylim (bool): Whether to synchronize the y-axis limits.
+        show_legend (bool): Whether to display the legend.
+    """
+
+
+    n_raw = min(len(raw_channels), len(colors), len(raw_labels))
+    n_filtered = min(len(filtered_channels), len(colors), len(filtered_labels))
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+    # Raw
+    for i in range(n_raw):
+        axes[0].plot(time_0, raw_channels[i], color=colors[i], linewidth=0.6, label=raw_labels[i])
+    axes[0].set_title(f'MEG {axis_label} Component - {rec_label} - Raw (Selected)')
+    axes[0].set_ylabel(y_label)
+    axes[0].grid(True, alpha=0.3)
+    if show_legend:
+        axes[0].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    # Filtered
+    for i in range(n_filtered):
+        axes[1].plot(time_1, filtered_channels[i], color=colors[i], linewidth=0.6, label=filtered_labels[i])
+    axes[1].set_title(f'MEG {axis_label} Component - {rec_label} - Filtered (Selected)')
+    axes[1].set_ylabel(y_label)
+    axes[1].grid(True, alpha=0.3)
+    if show_legend:
+        axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    if sync_ylim:
+        fig = plt.gcf()
+        axes = fig.get_axes()
+        if len(axes) >= 2:
+            y_limits = axes[0].get_ylim()  # Get limits from raw data subplot
+            axes[1].set_ylim(y_limits)    # Apply to filtered subplot
+    
+    plt.tight_layout()
+    
+    plt.subplots_adjust(top=0.95)
+    
+    plt.show()

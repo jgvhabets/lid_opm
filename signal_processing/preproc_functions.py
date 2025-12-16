@@ -21,7 +21,7 @@ def resample_aux_array(temp_auxdat, aux_chnames, auxtimes,
     
     new_auxdat = np.array(auxdat_resampled).T
 
-    new_auxtimes = auxtimes[0] + np.arange(0, temp_auxdat.shape[0]) * 1/aux_sfreq
+    new_auxtimes = auxtimes[0] + np.arange(0, new_auxdat.shape[0]) * 1/aux_sfreq
     new_aux_chnames = aux_chnames[1:]  # aligned_time is not in auxdat anymore
 
     return new_auxdat, new_aux_chnames, new_auxtimes

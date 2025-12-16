@@ -135,24 +135,25 @@ def convert_source_lsl_to_raw(SUB, TASK, ACQ, SES, source_path, HEALTHY=False,
         (meg_trigger_times, meg_trigger_types) = sync.find_arduino_triggers(raw_mne_opm=raw)
         meg_time_trigger0 = meg_trigger_times[0]
         # get trigger timings in antneuro/lsl data
-        AN_trig_times = sync.get_antneuro_arduino_times(lsldat)
-        lsl_t_trigger0 = AN_trig_times[0]
+        AN_trig_times = sync.get_antneuro_arduino_times(lsldat)  # gives relativ time since lsl recording start
+        lsl_t_trigger0 = AN_trig_times[0] + lsldat['time_stamps'][0]
         # get start time of lsl recording
         if "datetime" in fileheader['info']:
             lsl_clock_t0 = fileheader['info']['datetime'][0]
             lsl_clock_t0 = dt.datetime.strptime(lsl_clock_t0, "%Y-%m-%dT%H:%M:%S%z")
             print(f'found lsl starttime: {lsl_clock_t0}')
 
-        # plot comparison of trigger intervals
-        plot_check_trigger_distances_AN_FL(
-            SUB, SES, ACQ, TASK, AN_trig_times=AN_trig_times,
-            FL_trigger_times=meg_trigger_times,
-        )
+        # # plot comparison of trigger intervals
+        # plot_check_trigger_distances_AN_FL(
+        #     SUB, SES, ACQ, TASK, AN_trig_times=AN_trig_times,
+        #     FL_trigger_times=meg_trigger_times,
+        # )
 
 
         
 
     ### LSL AntNeuro Data (CUT internally on second and last trigger)
+    print(f'\n\tLSL TRIGGER 0: {lsl_t_trigger0}')
     (auxdat, aux_chnames, aux_sfreq) = convert_antneuro_stream(
         lsldat, lsl_t_trigger0, meg_trigger_times,
         SUB, ACQ, TASK, sub_meta_info, sub_config,
@@ -165,13 +166,14 @@ def convert_source_lsl_to_raw(SUB, TASK, ACQ, SES, source_path, HEALTHY=False,
     if TASK != 'rest':
         pyg_timings = extract_game_markers(
             pyg_stream=lslpyg,
-            lsl_t_trigger0=lsl_t_trigger0,
+            lsl_t_trigger0=lsldat['time_stamps'][0],
             meg_time_trigger0=meg_time_trigger0,
             SUB=SUB, ACQ=ACQ, TASK=TASK,
         )
     else:
         pyg_timings = None
 
+    # print(auxdat)
 
     return auxdat, aux_chnames, aux_sfreq, pyg_timings
 
@@ -195,6 +197,7 @@ def convert_antneuro_stream(lsldat, lsl_t_trigger0, meg_trigger_times,
             
             chnames = auxinfo['chnames']
             sfreq = auxinfo['sfreq']
+            print('LOADED AUXDAT:', fname)
 
         else:
             raise ValueError(f'no auxInfo for {SUB}_{TASK}_{ACQ}')
@@ -236,16 +239,19 @@ def convert_antneuro_stream(lsldat, lsl_t_trigger0, meg_trigger_times,
     else:
         auxtimes = an_times_inmeg
 
+    print('auxtimes', auxtimes, 'HEALTHY', HEALTHY)
+
     # merge aligned time and data
     auxdat = np.concatenate([auxtimes[:, np.newaxis], auxdat], axis=1)
     aux_chnames = ['aligned_time',] + aux_chnames
 
     ### cut on triggers (between second and last, TODO: replace with START and END triggers)
-    idx_start = np.where(auxtimes == meg_trigger_times[1])[0][0]
-    idx_end = np.where(auxtimes == meg_trigger_times[-1])[0][0]
-    print(f'CUT LSL DATA from {meg_trigger_times[1]} to {meg_trigger_times[-1]}'
-          f' on indices: {idx_start, idx_end}, orig shape: {auxdat.shape}')
-    auxdat = auxdat[idx_start:idx_end, :]
+    print('TODO: ANTNEURO CUTTING/CROPPING')
+    # idx_start = np.where(auxtimes == meg_trigger_times[1])[0][0]
+    # idx_end = np.where(auxtimes == meg_trigger_times[-1])[0][0]
+    # print(f'CUT LSL DATA from {meg_trigger_times[1]} to {meg_trigger_times[-1]}'
+    #       f' on indices: {idx_start, idx_end}, orig shape: {auxdat.shape}')
+    # auxdat = auxdat[idx_start:idx_end, :]
 
     ## storing
     auxdat = np.save(os.path.join(fpath, fname), auxdat)
@@ -274,7 +280,7 @@ def extract_game_markers(SUB, ACQ, TASK, pyg_stream=None,
     if fname in os.listdir(fpath):
         with open(os.path.join(fpath, fname), 'r') as f:
             game_timings = json.load(f)
-        print(f'\nPygame timings loaded from rawdata: {fname}')
+        print(f'\nPygame timings loaded from rawdata: {fname} in {fpath}')
 
         return game_timings
 
@@ -302,6 +308,7 @@ def extract_game_markers(SUB, ACQ, TASK, pyg_stream=None,
     for m, t in zip(pyg_stream['time_series'], pyg_times):
         
         m = m[0]
+
         # take trial start
         if m.startswith('TRIAL_START'):
             _, _, n_trial, trialtype = m.split('_')
@@ -325,7 +332,12 @@ def extract_game_markers(SUB, ACQ, TASK, pyg_stream=None,
         # take trial start
         elif m.startswith('TRIAL_END'):
             _, _, n_trial = m.split('_')
-            game_timings[f'{trialtype}_{side}']['end'].append(t)
+            try:
+                game_timings[f'{trialtype}_{side}']['end'].append(t)
+            except KeyError:
+                print(f'\n##### ERROR in game markers, type: {trialtype} or side: {side} not defined')
+                print(f'happened for marker: {m}; skipped for now')
+                continue
             # reset variables
             ACTIVE_TYPE, side, trialtype = None, None, None
     

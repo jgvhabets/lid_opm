@@ -94,7 +94,9 @@ class rawData_singleRec:
                                           source_path=self.source_path,
                                           HEALTHY=self.HEALTHY_CONTROL,
                                           REC_LOC=self.REC_LOC,)
+            # print('TEMPAUXDAT',temp_auxdat)
             self.auxtimes = temp_auxdat[:, 0]
+            # print('auxtimes in recRaw', self.auxtimes)
 
             # add means and stddevs to zscore
             if self.ZSCORE_ACC or self.ZSCORE_EMG:
@@ -108,7 +110,9 @@ class rawData_singleRec:
             # RESAMPLE aux (both acc and emg)
             resample_factor = self.aux_sfreq / self.preproc_config["TARGET_SFREQ"]
             if resample_factor != 1:
+                print('RESAMPLING AUX, factor:', resample_factor)
                 self.aux_sfreq = self.preproc_config["TARGET_SFREQ"]
+                print('auxtimes before resampling', self.auxtimes)
                 (temp_auxdat,
                  self.aux_chnames,
                  self.auxtimes) = prepr_funcs.resample_aux_array(
@@ -118,6 +122,7 @@ class rawData_singleRec:
                     aux_sfreq=self.aux_sfreq,
                     FACTOR=resample_factor,
                 )
+                print('auxtimes after resampling', self.auxtimes)
 
 
             ### PREPROCESS ACC

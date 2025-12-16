@@ -81,6 +81,8 @@ def get_antneuro_arduino_times(lsldat):
     """
     find starting times for indices in antneuro data,
     recorded via lsl
+
+    Return relativ seconds since LSL-recording start
     """
 
     lsl_rec_timestamps = lsldat['time_stamps'] - lsldat['time_stamps'][0]
@@ -90,7 +92,7 @@ def get_antneuro_arduino_times(lsldat):
     AN_ch_trig_sel = [chdict['type'][0] == 'trigger' for chdict in an_channeldicts_list]
     AN_trig_dat = np.array(lsldat['time_series'][:, AN_ch_trig_sel])
 
-    AN_trig_idx = np.where(AN_trig_dat > .5)[0][::2]
+    AN_trig_idx = np.where(AN_trig_dat > .5)[0][::2]  # only take start triggers
     AN_trig_times = lsl_rec_timestamps[AN_trig_idx]
 
     ### for potential internal check
