@@ -11,6 +11,7 @@ from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 
 from utils.load_utils import get_onedrive_path
+import source_raw_conversion.load_lsl as loadlsl
 
 
 TRIGGER_SCHEME = {
@@ -30,10 +31,23 @@ def find_arduino_triggers(raw_mne_opm, PLOT_CHECK: bool = False):
     idx_trig = np.where([t == 'stim' for t in raw_mne_opm.get_channel_types()])[0][0]
     trigger = raw_mne_opm.get_data()[idx_trig]
     diff_trigger = np.diff(trigger)
-
     pos_peaks, pos_peaks_props = find_peaks(diff_trigger, height=1, distance=10,)
     neg_peaks, neg_peaks_props = find_peaks(-1 * diff_trigger, height=1, distance=10,)
-    
+
+    # if data is cropped, first value is already high (3.5), but not recognized as trigger start
+    if (len(pos_peaks) < len(neg_peaks)) and any(trigger[:10] >= 1):
+        pos_peaks = np.insert(pos_peaks, 0, 0)
+        print(f'added trigger start at index 0, because data seems to be cropped and first value is already high')
+
+    if len(pos_peaks) > len(neg_peaks):
+        pos_peaks = pos_peaks[:len(neg_peaks)]
+
+    assert len(pos_peaks) == len(neg_peaks), (
+        f'WARNING: found different number of pos and neg peaks in trigger channel, '
+        f'found {len(pos_peaks)} positive and {len(neg_peaks)} negative peaks. '
+        f'Check data and adjust find_peaks parameters if necessary'
+    )
+
     trig_times_starts = raw_mne_opm.times[pos_peaks]
     trig_times_ends = raw_mne_opm.times[neg_peaks]
 
@@ -56,6 +70,7 @@ def find_arduino_triggers(raw_mne_opm, PLOT_CHECK: bool = False):
     for t1, t2 in zip(trig_times_starts, trig_times_ends):
         # calculate duration between start and end
         dur = round(t2 - t1, 2)
+
         # if START-duration is found, and no trigger is ongoing, activate trigger and save start time
         if dur == TRIGGER_SCHEME['start_pulse'] and not TRIG_ACTIVE:
             TRIG_ACTIVE = True
@@ -77,7 +92,7 @@ def find_arduino_triggers(raw_mne_opm, PLOT_CHECK: bool = False):
     return trigger_times, trigger_types
 
 
-def get_antneuro_arduino_times(lsldat):
+def get_antneuro_arduino_times(lsldat, AN_TRIGGER_THRESHOLD: float = .5,):
     """
     find starting times for indices in antneuro data,
     recorded via lsl
@@ -87,14 +102,12 @@ def get_antneuro_arduino_times(lsldat):
 
     lsl_rec_timestamps = lsldat['time_stamps'] - lsldat['time_stamps'][0]
 
-    an_channeldicts_list = lsldat['info']['desc'][0]['channels'][0]['channel']
-
-    AN_ch_trig_sel = [chdict['type'][0] == 'trigger' for chdict in an_channeldicts_list]
-    AN_trig_dat = np.array(lsldat['time_series'][:, AN_ch_trig_sel])
-
-    AN_trig_idx = np.where(AN_trig_dat > .5)[0][::2]  # only take start triggers
+    AN_trig_dat = loadlsl.get_lsl_trigger_channel(lsldat)
+    
+    # only take start triggers, every 2nd trigger in antneuro data
+    AN_trig_idx = np.where(AN_trig_dat > AN_TRIGGER_THRESHOLD)[0][::2]  
     AN_trig_times = lsl_rec_timestamps[AN_trig_idx]
-
+    
     ### for potential internal check
     # plt.plot(lsl_rec_timestamps, AN_trig_dat)
 
@@ -107,9 +120,8 @@ def get_antneuro_arduino_times(lsldat):
 
 def get_meg_trigger_diffs(SUB, TASK, ACQ, RETURN_MEGTIME_TRIGGER0=True,):
     # load meg trigger times (in meg time) from raw data
-    fpath = os.path.join(get_onedrive_path('raw_data'),
-                        f'sub-{SUB}', 'opm',
-                        f'sub-{SUB}_{TASK}_{ACQ}_opm_triggertimes.npy')
+    fpath = os.path.join(get_onedrive_path('raw_data'), f'sub-{SUB}', 'opm',
+                         f'sub-{SUB}_{TASK}_{ACQ}_opm_triggertimes.npy')
     meg_triggers = np.load(fpath)
     meg_trigger_diffs = [
         dt.timedelta(seconds= t - meg_triggers[0]) for t in meg_triggers

@@ -20,10 +20,49 @@ from source_raw_conversion.load_fieldline_source_opm import get_fieldline_in_mne
 from plotting.sync_checking import plot_check_trigger_distances_AN_FL
 
 
-def get_source_streams(SUB, ACQ, TASK, source_path):
+def load_lsl_to_mne(SUB, SES, TASK, ACQ, HEALTHY=False, REC_LOC=False):
+    """
+    Loads LSL data into mne, with option to resample and crop.
+    
+    resampling is done if target_sfreq is set
+    CROP_RETURN_TRIGGERS defaults False, if True start and ending of recording
+    iscropped based on present triggers.
+    CROP_MARGIN is taken around triggers if > 0.
+
+    if cropping is true, trigger_times/types are returned bcs of change in
+    time-axis due to cropping
+    """
+    # load lsl .xdf-data and define streams
+    streams, fileheader = get_source_streams(
+        SUB=SUB,
+        SES=SES,
+        ACQ=ACQ,
+        TASK=TASK,
+    )
+    lsldat, lslmrk, lslpyg = define_streams(streams)
+
+
+def get_lsl_channels(lsldat):
+
+    an_channeldicts_list = lsldat['info']['desc'][0]['channels'][0]['channel']
+
+    return an_channeldicts_list
+
+
+def get_lsl_trigger_channel(lsldat):
+
+    an_channeldicts_list = get_lsl_channels(lsldat)
+    AN_ch_trig_sel = [chdict['type'][0] == 'trigger' for chdict in an_channeldicts_list]
+    AN_ch_trig_sel = np.array(lsldat['time_series'][:, AN_ch_trig_sel]).astype(float)
+
+    return AN_ch_trig_sel
+
+
+def get_source_streams(SUB, SES, ACQ, TASK,):
     """
     Input:
     - SUB
+    - SES
     - ACQ
     - TASK
 
@@ -32,7 +71,12 @@ def get_source_streams(SUB, ACQ, TASK, source_path):
     - fileheader
     """
 
-    lsl_source_path = os.path.join(source_path, 'lsl')
+    lsl_source_path = os.path.join(
+        get_onedrive_path('source_data'),
+        f'sub-{SUB}',
+        f'ses-{SES}',
+        'lsl'
+    )
     # gets folder with defined task and acquisition
     try:
         sel_folder = [f for f in os.listdir(lsl_source_path)
