@@ -9,6 +9,14 @@ import pyxdf
 import numpy as np
 import json
 import datetime as dt
+from itertools import compress
+from mne import (
+    create_info,
+    Annotations,
+    Epochs,
+    events_from_annotations
+)
+from mne.io import RawArray
 
 from utils.load_utils import (
     get_onedrive_path,
@@ -20,7 +28,11 @@ from source_raw_conversion.load_fieldline_source_opm import get_fieldline_in_mne
 from plotting.sync_checking import plot_check_trigger_distances_AN_FL
 
 
-def load_lsl_to_mne(SUB, SES, TASK, ACQ, HEALTHY=False, REC_LOC=False):
+def load_AN_to_mne(
+    SUB, SES, TASK, ACQ, HEALTHY=False,
+    INCL_ANNOTATIONS=False, CROP_AROUND_TRIGGERS=False, CROP_MARGIN_SEC=10,
+    RETURN_AS_EPOCHS=False, EVENT_T_PRE=-1.0, EVENT_T_POST=2.0
+):
     """
     Loads LSL data into mne, with option to resample and crop.
     
@@ -32,17 +44,82 @@ def load_lsl_to_mne(SUB, SES, TASK, ACQ, HEALTHY=False, REC_LOC=False):
     if cropping is true, trigger_times/types are returned bcs of change in
     time-axis due to cropping
     """
+    # load config and meta info
+    sub_config = load_subject_config(subject_id=SUB,)
+
+    if not HEALTHY and not SUB.startswith('9'):
+        sub_meta_info = get_sub_rec_metainfo(config_sub=sub_config)
+    else:
+        sub_meta_info = None
+
+
     # load lsl .xdf-data and define streams
-    streams, fileheader = get_source_streams(
+    lsl_data_dict = get_source_streams(
         SUB=SUB,
         SES=SES,
         ACQ=ACQ,
         TASK=TASK,
+        RETURN_STEAMS_HEADER=False
+    )  # return 'data', 'markers', 'pygame' streams in dict
+
+    aux_sfreq = int(float(lsl_data_dict['data']['info']['nominal_srate'][0]))
+    an_channels_dict = get_lsl_channel_dict(lsl_data_dict['data'])
+    ch_aux_sel = [chdict['type'][0] == 'aux' for chdict in an_channels_dict]
+    assert sum (ch_aux_sel) == len(sub_config["antneuro_chs"]), (
+        "AntNeuro-data contains different number of AUX channels vs "
+        "given AntNeuro channels in subject CONFIG-json: "
+        f"{sum(ch_aux_sel)} vs {len(sub_config['antneuro_chs'])}"
     )
-    lsldat, lslmrk, lslpyg = define_streams(streams)
+
+    # select only aux data, and convert to numpy array
+    aux_data = lsl_data_dict['data']['time_series'][:, ch_aux_sel]
+    # aux_times = lsl_data_dict['data']['time_stamps'] - lsl_data_dict['data']['time_stamps'][0]
+    aux_chnames = list(sub_config["antneuro_chs"].values())
+    aux_chtypes = ['emg' if 'emg' in chname.lower() else 'misc' for chname in aux_chnames]
+
+    info = create_info(
+        ch_names=aux_chnames,
+        sfreq=aux_sfreq,
+        ch_types=aux_chtypes
+    )
+    aux_raw = RawArray(aux_data.T, info)
+
+    if INCL_ANNOTATIONS:
+        # get AN trial start times, zero-center at first trial start
+        an_trigger_times = sync.get_antneuro_arduino_times(lsldat=lsl_data_dict['data'])
+        # an_trigger_times = an_trigger_times - an_trigger_times[0]
+        an_trigger_markers = get_an_trigger_markers(lsl_data_dict['pygame'])
+
+        annotations_task = Annotations(
+            onset=an_trigger_times,
+            duration=[0.25] * len(an_trigger_times),
+            description=an_trigger_markers,
+        )
+        # annotations_event = rawHFC.annotations 
+        aux_raw.set_annotations(annotations_task)
+
+    if CROP_AROUND_TRIGGERS:
+        an_trigger_times = sync.get_antneuro_arduino_times(lsldat=lsl_data_dict['data'])
+        
+        aux_raw = aux_raw.crop(
+            tmin=an_trigger_times[0],
+            tmax=an_trigger_times[-1] + CROP_MARGIN_SEC
+        )
+        # # adjust triggertimes, zeroed to start first trigger accodingly
+        # an_trigger_times = np.array(an_trigger_times) - an_trigger_times[0]
+    
+    if RETURN_AS_EPOCHS:
+        
+        aux_events, aux_event_id = events_from_annotations(aux_raw)
+        aux_raw = Epochs(aux_raw, aux_events, aux_event_id,
+                         tmin=EVENT_T_PRE, tmax=EVENT_T_POST,
+                         baseline=None, preload=True)
+
+    return aux_raw
 
 
-def get_lsl_channels(lsldat):
+    
+def get_lsl_channel_dict(lsldat):
 
     an_channeldicts_list = lsldat['info']['desc'][0]['channels'][0]['channel']
 
@@ -51,14 +128,38 @@ def get_lsl_channels(lsldat):
 
 def get_lsl_trigger_channel(lsldat):
 
-    an_channeldicts_list = get_lsl_channels(lsldat)
+    an_channeldicts_list = get_lsl_channel_dict(lsldat)
     AN_ch_trig_sel = [chdict['type'][0] == 'trigger' for chdict in an_channeldicts_list]
     AN_ch_trig_sel = np.array(lsldat['time_series'][:, AN_ch_trig_sel]).astype(float)
 
     return AN_ch_trig_sel
 
 
-def get_source_streams(SUB, SES, ACQ, TASK,):
+def get_an_trigger_markers(lsl_pygame):
+    """
+    return list of trial start markers, extracted from pygame stream in lsl data
+    - indicating trial-type and laterality of trial
+    """
+
+    PYG_START_MARKS = [f'STIM_ONSET_{t}' for t in ['go', 'nogo', 'abort_go']]
+
+    # get start markers per trial
+    trial_start_sel = [any([m[0].startswith(mark) for mark in PYG_START_MARKS])
+                    for m in lsl_pygame['time_series']]
+    onset_markers = list(compress(lsl_pygame['time_series'], trial_start_sel))
+    # remove 'STIM_ONSET_' and replace 'abort_go' with 'abort' for better readability
+    onset_markers = [m[0].split('STIM_ONSET_')[-1].replace('abort_go', 'abort')
+                    for m in onset_markers]
+    
+    # # get onset times of trial starts
+    # onset_times = np.array(list(compress(lsl_pygame['time_stamps'], trial_start_sel)))
+    # # zero-center on start of first trial 
+    # onset_times = onset_times - onset_times[0]
+
+    return onset_markers
+
+
+def get_source_streams(SUB, SES, ACQ, TASK, RETURN_STEAMS_HEADER=False,):
     """
     Input:
     - SUB
@@ -96,7 +197,13 @@ def get_source_streams(SUB, SES, ACQ, TASK,):
     # load defined LSL file
     streams, fileheader = pyxdf.load_xdf(sel_path)
 
-    return streams, fileheader
+    if RETURN_STEAMS_HEADER:
+        return streams, fileheader
+
+    else:
+        lsldat, lslmrk, lslpyg = define_streams(streams)
+
+        return {'data': lsldat, 'pygame': lslpyg}
 
 
 def define_streams(streams):

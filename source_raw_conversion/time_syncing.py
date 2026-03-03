@@ -22,7 +22,7 @@ TRIGGER_SCHEME = {
 }  # TODO: import from json used for sending triggers during task
 
 
-def find_arduino_triggers(raw_mne_opm, PLOT_CHECK: bool = False):
+def find_fl_arduino_triggers(raw_mne_opm, PLOT_CHECK: bool = False):
     """
     only works in fieldline data so far bcs antneuro doesnot capture
     the duration of the pulses, only the onset
@@ -89,10 +89,15 @@ def find_arduino_triggers(raw_mne_opm, PLOT_CHECK: bool = False):
                         TRIG_ACTIVE = False
                         temp_t = None
     
+    print('INCLUDE ANTNEURO/LSL TRIGGER TYPES; INCL LATERALITY')
+    
     return trigger_times, trigger_types
 
 
-def get_antneuro_arduino_times(lsldat, AN_TRIGGER_THRESHOLD: float = .5,):
+def get_antneuro_arduino_times(
+    lsldat, AN_TRIGGER_THRESHOLD: float = .5,
+    PLOT_TO_CHECK=False,
+):
     """
     find starting times for indices in antneuro data,
     recorded via lsl
@@ -106,14 +111,15 @@ def get_antneuro_arduino_times(lsldat, AN_TRIGGER_THRESHOLD: float = .5,):
     
     # only take start triggers, every 2nd trigger in antneuro data
     AN_trig_idx = np.where(AN_trig_dat > AN_TRIGGER_THRESHOLD)[0][::2]  
-    AN_trig_times = lsl_rec_timestamps[AN_trig_idx]
+    AN_trig_times = np.array(lsl_rec_timestamps[AN_trig_idx])
     
     ### for potential internal check
-    # plt.plot(lsl_rec_timestamps, AN_trig_dat)
+    if PLOT_TO_CHECK:
+        plt.plot(lsl_rec_timestamps, AN_trig_dat)
 
-    # plt.scatter(AN_trig_times, [1] * len(AN_trig_idx))
+        plt.scatter(AN_trig_times, [1] * len(AN_trig_idx))
 
-    # plt.show()
+        plt.show()
 
     return AN_trig_times
 
