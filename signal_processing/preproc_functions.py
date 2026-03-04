@@ -13,7 +13,7 @@ from mne import pick_types
 def apply_acc_preprocessing_in_Raw(
     aux_raw,
     bandpass_low: float = 0.5, bandpass_high: float = 20,
-    zscore: bool = True,
+    signal_vector_magn: bool = False, zscore: bool = True,
 ):
     """
     applies acc preprocessing steps to mne Raw object, in-place.
@@ -29,6 +29,13 @@ def apply_acc_preprocessing_in_Raw(
     else:
         aux_raw.filter(l_freq=bandpass_low, h_freq=bandpass_high, picks=misc_picks)
     
+    if signal_vector_magn:
+        acc_data = aux_raw.get_data(picks=misc_picks)
+        # combine x,y,z each side into one signal, adjust info file from 3 to 1 (or add svm)
+        # acc_data = 
+        aux_raw._data[misc_picks] = acc_data
+
+
     if zscore:
         acc_data = aux_raw.get_data(picks=misc_picks)
         scaler = StandardScaler()
