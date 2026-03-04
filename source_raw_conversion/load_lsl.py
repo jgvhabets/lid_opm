@@ -14,10 +14,15 @@ from mne import (
     create_info,
     Annotations,
     Epochs,
-    events_from_annotations
+    events_from_annotations, 
+    pick_types
 )
 from mne.io import RawArray
 
+from signal_processing.preproc_functions import (
+    apply_acc_preprocessing_in_Raw,
+    apply_emg_preprocessing_in_Raw
+)
 from utils.load_utils import (
     get_onedrive_path,
     load_subject_config,
@@ -31,7 +36,11 @@ from plotting.sync_checking import plot_check_trigger_distances_AN_FL
 def load_AN_to_mne(
     SUB, SES, TASK, ACQ, HEALTHY=False,
     INCL_ANNOTATIONS=False, CROP_AROUND_TRIGGERS=False, CROP_MARGIN_SEC=10,
-    RETURN_AS_EPOCHS=False, EVENT_T_PRE=-1.0, EVENT_T_POST=2.0
+    RETURN_AS_EPOCHS=False, EVENT_T_PRE=-1.0, EVENT_T_POST=2.0,
+    APPLY_ACC_PREPROCESSING: bool = False, AUX_RESAMPLE_SFREQ: int = 512,
+    Z_SCORE_ACC: bool = True,
+    APPLY_EMG_PREPROCESSING: bool = False,
+    EMG_SIGNAL_TYPE: str = 'hilbert_env', Z_SCORE_EMG: bool = False,
 ):
     """
     Loads LSL data into mne, with option to resample and crop.
@@ -43,6 +52,8 @@ def load_AN_to_mne(
 
     if cropping is true, trigger_times/types are returned bcs of change in
     time-axis due to cropping
+
+    EMG_SIGNAL_TYPE: 'hilbert_env' or 'tkeo', defines which emg preprocessing step is applied if
     """
     # load config and meta info
     sub_config = load_subject_config(subject_id=SUB,)
@@ -63,7 +74,7 @@ def load_AN_to_mne(
     )  # return 'data', 'markers', 'pygame' streams in dict
 
     aux_sfreq = int(float(lsl_data_dict['data']['info']['nominal_srate'][0]))
-    an_channels_dict = get_lsl_channel_dict(lsl_data_dict['data'])
+    an_channels_dict = sync.get_lsl_channel_dict(lsl_data_dict['data'])
     ch_aux_sel = [chdict['type'][0] == 'aux' for chdict in an_channels_dict]
     assert sum (ch_aux_sel) == len(sub_config["antneuro_chs"]), (
         "AntNeuro-data contains different number of AUX channels vs "
@@ -77,18 +88,21 @@ def load_AN_to_mne(
     aux_chnames = list(sub_config["antneuro_chs"].values())
     aux_chtypes = ['emg' if 'emg' in chname.lower() else 'misc' for chname in aux_chnames]
 
-    info = create_info(
+    aux_info = create_info(
         ch_names=aux_chnames,
         sfreq=aux_sfreq,
         ch_types=aux_chtypes
     )
-    aux_raw = RawArray(aux_data.T, info)
+    aux_raw = RawArray(aux_data.T, aux_info)
+    if AUX_RESAMPLE_SFREQ and AUX_RESAMPLE_SFREQ != aux_sfreq:
+        aux_raw.resample(sfreq=AUX_RESAMPLE_SFREQ,)
+
 
     if INCL_ANNOTATIONS:
         # get AN trial start times, zero-center at first trial start
         an_trigger_times = sync.get_antneuro_arduino_times(lsldat=lsl_data_dict['data'])
         # an_trigger_times = an_trigger_times - an_trigger_times[0]
-        an_trigger_markers = get_an_trigger_markers(lsl_data_dict['pygame'])
+        an_trigger_markers = sync.get_an_trigger_markers(lsl_data_dict['pygame'])
 
         annotations_task = Annotations(
             onset=an_trigger_times,
@@ -107,7 +121,15 @@ def load_AN_to_mne(
         )
         # # adjust triggertimes, zeroed to start first trigger accodingly
         # an_trigger_times = np.array(an_trigger_times) - an_trigger_times[0]
+
+    if APPLY_ACC_PREPROCESSING:
+        apply_acc_preprocessing_in_Raw(aux_raw, zscore=Z_SCORE_ACC,)
     
+    if APPLY_EMG_PREPROCESSING:
+        apply_emg_preprocessing_in_Raw(
+            aux_raw, emg_signal_type=EMG_SIGNAL_TYPE, zscore=Z_SCORE_EMG,
+        )
+
     if RETURN_AS_EPOCHS:
         
         aux_events, aux_event_id = events_from_annotations(aux_raw)
@@ -119,47 +141,15 @@ def load_AN_to_mne(
 
 
     
-def get_lsl_channel_dict(lsldat):
-
-    an_channeldicts_list = lsldat['info']['desc'][0]['channels'][0]['channel']
-
-    return an_channeldicts_list
 
 
-def get_lsl_trigger_channel(lsldat):
 
-    an_channeldicts_list = get_lsl_channel_dict(lsldat)
-    AN_ch_trig_sel = [chdict['type'][0] == 'trigger' for chdict in an_channeldicts_list]
-    AN_ch_trig_sel = np.array(lsldat['time_series'][:, AN_ch_trig_sel]).astype(float)
-
-    return AN_ch_trig_sel
-
-
-def get_an_trigger_markers(lsl_pygame):
-    """
-    return list of trial start markers, extracted from pygame stream in lsl data
-    - indicating trial-type and laterality of trial
-    """
-
-    PYG_START_MARKS = [f'STIM_ONSET_{t}' for t in ['go', 'nogo', 'abort_go']]
-
-    # get start markers per trial
-    trial_start_sel = [any([m[0].startswith(mark) for mark in PYG_START_MARKS])
-                    for m in lsl_pygame['time_series']]
-    onset_markers = list(compress(lsl_pygame['time_series'], trial_start_sel))
-    # remove 'STIM_ONSET_' and replace 'abort_go' with 'abort' for better readability
-    onset_markers = [m[0].split('STIM_ONSET_')[-1].replace('abort_go', 'abort')
-                    for m in onset_markers]
-    
-    # # get onset times of trial starts
-    # onset_times = np.array(list(compress(lsl_pygame['time_stamps'], trial_start_sel)))
-    # # zero-center on start of first trial 
-    # onset_times = onset_times - onset_times[0]
-
-    return onset_markers
-
-
-def get_source_streams(SUB, SES, ACQ, TASK, RETURN_STEAMS_HEADER=False,):
+def get_source_streams(
+    SUB, SES, ACQ, TASK,
+    RETURN_STEAMS_HEADER: bool = False,
+    RETURN_ONLY_AN: bool = False,
+    RETURN_ONLY_PYGAME: bool = False,
+):
     """
     Input:
     - SUB
@@ -199,10 +189,14 @@ def get_source_streams(SUB, SES, ACQ, TASK, RETURN_STEAMS_HEADER=False,):
 
     if RETURN_STEAMS_HEADER:
         return streams, fileheader
-
     else:
         lsldat, lslmrk, lslpyg = define_streams(streams)
 
+    if RETURN_ONLY_AN:
+        return lsldat
+    elif RETURN_ONLY_PYGAME:
+        return lslpyg
+    else:
         return {'data': lsldat, 'pygame': lslpyg}
 
 

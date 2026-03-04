@@ -7,11 +7,12 @@ and to allign all timeseries to 1) opm-time, and
 import datetime as dt
 import os
 import numpy as np
+from itertools import compress
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 
 from utils.load_utils import get_onedrive_path
-import source_raw_conversion.load_lsl as loadlsl
+# from source_raw_conversion.load_lsl import get_lsl_trigger_channel
 
 
 TRIGGER_SCHEME = {
@@ -22,7 +23,9 @@ TRIGGER_SCHEME = {
 }  # TODO: import from json used for sending triggers during task
 
 
-def find_fl_arduino_triggers(raw_mne_opm, PLOT_CHECK: bool = False):
+def find_fl_arduino_triggers(
+    raw_mne_opm, PLOT_CHECK: bool = False,
+):
     """
     only works in fieldline data so far bcs antneuro doesnot capture
     the duration of the pulses, only the onset
@@ -89,8 +92,6 @@ def find_fl_arduino_triggers(raw_mne_opm, PLOT_CHECK: bool = False):
                         TRIG_ACTIVE = False
                         temp_t = None
     
-    print('INCLUDE ANTNEURO/LSL TRIGGER TYPES; INCL LATERALITY')
-    
     return trigger_times, trigger_types
 
 
@@ -107,7 +108,7 @@ def get_antneuro_arduino_times(
 
     lsl_rec_timestamps = lsldat['time_stamps'] - lsldat['time_stamps'][0]
 
-    AN_trig_dat = loadlsl.get_lsl_trigger_channel(lsldat)
+    AN_trig_dat = get_lsl_trigger_channel(lsldat)
     
     # only take start triggers, every 2nd trigger in antneuro data
     AN_trig_idx = np.where(AN_trig_dat > AN_TRIGGER_THRESHOLD)[0][::2]  
@@ -122,6 +123,46 @@ def get_antneuro_arduino_times(
         plt.show()
 
     return AN_trig_times
+
+
+def get_lsl_channel_dict(lsldat):
+
+    an_channeldicts_list = lsldat['info']['desc'][0]['channels'][0]['channel']
+
+    return an_channeldicts_list
+
+
+def get_lsl_trigger_channel(lsldat):
+
+    an_channeldicts_list = get_lsl_channel_dict(lsldat)
+    AN_ch_trig_sel = [chdict['type'][0] == 'trigger' for chdict in an_channeldicts_list]
+    AN_ch_trig_sel = np.array(lsldat['time_series'][:, AN_ch_trig_sel]).astype(float)
+
+    return AN_ch_trig_sel
+
+
+def get_an_trigger_markers(lsl_pygame):
+    """
+    return list of trial start markers, extracted from pygame stream in lsl data
+    - indicating trial-type and laterality of trial
+    """
+
+    PYG_START_MARKS = [f'STIM_ONSET_{t}' for t in ['go', 'nogo', 'abort_go']]
+
+    # get start markers per trial
+    trial_start_sel = [any([m[0].startswith(mark) for mark in PYG_START_MARKS])
+                    for m in lsl_pygame['time_series']]
+    onset_markers = list(compress(lsl_pygame['time_series'], trial_start_sel))
+    # remove 'STIM_ONSET_' and replace 'abort_go' with 'abort' for better readability
+    onset_markers = [m[0].split('STIM_ONSET_')[-1].replace('abort_go', 'abort')
+                    for m in onset_markers]
+    
+    # # get onset times of trial starts
+    # onset_times = np.array(list(compress(lsl_pygame['time_stamps'], trial_start_sel)))
+    # # zero-center on start of first trial 
+    # onset_times = onset_times - onset_times[0]
+
+    return onset_markers
 
 
 def get_meg_trigger_diffs(SUB, TASK, ACQ, RETURN_MEGTIME_TRIGGER0=True,):
