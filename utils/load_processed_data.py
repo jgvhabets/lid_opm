@@ -110,6 +110,7 @@ def _read_fif(fpath: str, data_type: str, preload: bool):
     if data_type == 'raw':
         return mne.io.read_raw_fif(fpath, preload=preload, verbose=False)
     elif data_type == 'epochs':
+        print(f"Reading epochs from {fpath}...")
         return mne.read_epochs(fpath, preload=preload, verbose=False)
     else:
         raise ValueError(f"Unknown data_type '{data_type}', expected 'raw' or 'epochs'")
