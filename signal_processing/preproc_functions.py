@@ -3,12 +3,16 @@ functions to apply within preprocessing steps (preprocessing.py)
 """
 
 # import public libraries
+import os
 import numpy as np
 from itertools import product, compress
 from scipy.signal import butter, filtfilt, iirnotch, hilbert
 from mne.filter import filter_data, notch_filter, resample
 from sklearn.preprocessing import StandardScaler
-from mne import pick_types
+from mne import pick_types, Epochs
+from mne.io import BaseRaw
+
+from utils.load_utils import get_onedrive_path
 
 def apply_acc_preprocessing_in_Raw(
     aux_raw,
@@ -219,3 +223,46 @@ def apply_filter(sig, low_f, sfreq, order=None, high_f=None,  type='band',
     sig = filtfilt(b, a, sig)
 
     return sig
+
+
+def save_cleaned_data(
+    meg_data=None, aux_data=None, SUB=None, SES=None, ACQ=None, TASK=None,
+    config_version=None,
+):
+    """
+    after all preprocessing steps, save the cleaned raw and epoch objects
+    """
+
+    # check path existence, otherwise create
+    deriv_dir = os.path.join(
+        get_onedrive_path('cleaned_data'),
+        f"cleaned_data_preproc_{config_version}",
+        f"sub-{SUB}",
+    )
+    os.makedirs(deriv_dir, exist_ok=True)
+
+    if meg_data is not None: meg_present = True
+    if aux_data is not None: aux_present = True
+
+    # define whether data is Raw or Epochs for correct saving
+    if meg_present and isinstance(meg_data, BaseRaw):
+        data_type = 'raw'
+    elif aux_present and isinstance(aux_data, BaseRaw):
+        data_type = 'raw'
+    elif meg_present and isinstance(meg_data, Epochs):
+        data_type = 'epochs'
+    elif aux_present and isinstance(aux_data, Epochs):
+        data_type = 'epochs'
+    else:
+        raise ValueError('meg_data should be either mne.io.Raw or mne.Epochs')
+    
+    if meg_present:
+        filename_meg = f"MEG_cleaned_{data_type}_sub-{SUB}_ses-{SES}_acq-{ACQ}_task-{TASK}.fif"
+    if aux_present:
+        filename_aux = f"AUX_cleaned_{data_type}_sub-{SUB}_ses-{SES}_acq-{ACQ}_task-{TASK}.fif"
+    
+    if meg_present:
+        meg_data.save(os.path.join(deriv_dir, filename_meg), overwrite=True)
+    if aux_present:
+        aux_data.save(os.path.join(deriv_dir, filename_aux), overwrite=True)
+    

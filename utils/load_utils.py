@@ -17,6 +17,7 @@ def get_onedrive_path(folder: str = 'project',):
     """
     folder_options = ['project', 'figures','data',
                       'raw_data', 'source_data',
+                      'cleaned_data',
                       'processed_data', 'results',]
     
     if folder.lower() not in folder_options:
@@ -55,6 +56,7 @@ def get_onedrive_path(folder: str = 'project',):
     elif folder == 'raw_data': return os.path.join(project_path, 'data', 'raw_data')
 
     elif folder == 'processed_data': return os.path.join(project_path, 'data', 'processed_data')
+    elif folder == 'cleaned_data': return os.path.join(project_path, 'data', 'cleaned_data')
 
     elif folder == 'source_data': return os.path.join(project_path, 'data', 'source_data')
 
