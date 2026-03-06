@@ -13,12 +13,13 @@ from utils.load_utils import get_onedrive_path
 
 
 # Frequency bands for correlation row
+# replace with greek symbols for theta alpha, beta, gamma
 FREQ_BANDS = {
-    'theta 4-8':    (4,  8),
-    'alpha 8-12':   (8,  12),
+    'θ 4-8':    (4,  8),
+    'α 8-12':   (8,  12),
     'low-β 8-16':  (8,  16),
     'high-β 16-25': (16, 25),
-    'gamma 60-90':  (60, 90),
+    'γ 60-90':  (60, 90),
 }
 
 # Five qualitatively distinct band colors
@@ -40,8 +41,12 @@ def plot_tfr_with_aux(
     vmax: float = 2,
     motor_ch_nrs: list = None,
     emg_smooth_ms: float = 50,
+    opm_smooth_ms: float = 50,
+    z_score_aux: bool = True,
     corr_window_ms: float = 50,
+    plot_corr_heatmap: bool = False,
     part_figname: str = None,
+    donot_show: bool = False,
 ):
     """
     4-row × 2-column figure for one epoch type, all time-axes aligned:
@@ -76,12 +81,16 @@ def plot_tfr_with_aux(
         substrings (e.g. ['206', '207', '305', '306', '404', '405']).
     emg_smooth_ms : float
         Moving-average smoothing for EMG traces in ms (0 = off).
+    opm_smooth_ms : float
+        Moving-average smoothing for OPM traces in ms (0 = off).
+    z_score_aux : bool
+        Whether to z-score the auxiliary channels.
     corr_window_ms : float
         Width of the sliding window (ms) used when computing Pearson r(t).
         At each time point, data from all trials within ±window/2 are pooled
         before computing r, yielding a smoother estimate. Default 50 ms.
     part_figname : str, optional
-        If given, saves to <onedrive>/figures/spectral/epoch_tfr/epochTFR_<part_figname>.png
+        If given, saves to <onedrive>/figures/spectral/epoch_tfr/epochTFRbehav_<part_figname>.png
     """
     if freqs is None:
         freqs = np.arange(2, 95, 1)
@@ -192,10 +201,14 @@ def plot_tfr_with_aux(
                                               sfreq_meg, corr_window_ms)
         return result
 
-    corr_left_emg  = _band_r_over_time(left_trials_pow,  right_emg_trials)
-    corr_left_acc  = _band_r_over_time(left_trials_pow,  right_acc_trials)
-    corr_right_emg = _band_r_over_time(right_trials_pow, left_emg_trials)
-    corr_right_acc = _band_r_over_time(right_trials_pow, left_acc_trials)
+    # square EMG/ACC before correlation — captures signal power, not signed amplitude
+    corr_left_emg  = _band_r_over_time(left_trials_pow,  right_emg_trials ** 2)
+    corr_left_acc  = _band_r_over_time(left_trials_pow,  right_acc_trials ** 2)
+    corr_right_emg = _band_r_over_time(right_trials_pow, left_emg_trials  ** 2)
+    corr_right_acc = _band_r_over_time(right_trials_pow, left_acc_trials  ** 2)
+    
+    print(f'max corr left opm, right emg {[[k, np.max(v)] for k, v in corr_left_emg.items()]}')
+    print(f'max corr right opm, left emg {[[k, np.max(v)] for k, v in corr_right_emg.items()]}')
 
     # significance threshold (two-tailed p=0.05, df = n_trials-2)
     from scipy.stats import t as t_dist
@@ -218,6 +231,11 @@ def plot_tfr_with_aux(
 
     left_traces  = meg_evoked.data[left_ev_idx]  * amp
     right_traces = meg_evoked.data[right_ev_idx] * amp
+    # smooth the evoked traces for better visualization (not for stats)
+    if opm_smooth_ms and opm_smooth_ms > 0:
+        win = max(1, int(opm_smooth_ms / 1000 * sfreq_meg))
+        left_traces  = uniform_filter1d(left_traces,  size=win, axis=1)
+        right_traces = uniform_filter1d(right_traces, size=win, axis=1)
     lm, ls = left_traces.mean(0),  left_traces.std(0)  / max(1, np.sqrt(len(left_ev_idx)))
     rm, rs = right_traces.mean(0), right_traces.std(0) / max(1, np.sqrt(len(right_ev_idx)))
 
@@ -226,6 +244,18 @@ def plot_tfr_with_aux(
     # ------------------------------------------------------------------ #
     aux_all_picks = emg_picks.tolist() + acc_picks.tolist()
     aux_evoked    = aux_epochs[epoch_type].average(picks=aux_all_picks)
+    if z_score_aux:
+        # zscore, using the mean-std per hemibody-side for emg/acc separately
+        for ch_type, ch_names in zip(['EMG l', 'EMG r', 'ACC l', 'ACC r'],
+                                     [right_emg, left_emg, right_acc, left_acc]):
+            idxs = [aux_evoked.ch_names.index(ch) for ch in ch_names if ch in aux_evoked.ch_names]
+            if idxs:
+                temp_data = aux_evoked.data[idxs]
+                mean = temp_data.mean(axis=1, keepdims=True)
+                std  = temp_data.std(axis=1, keepdims=True) + 1e-30
+                aux_evoked.data[idxs] = (temp_data - mean) / std
+
+
     aux_times     = aux_evoked.times
 
     def _get_aux_traces(ch_names):
@@ -238,7 +268,10 @@ def plot_tfr_with_aux(
             if emg_smooth_ms and emg_smooth_ms > 0 and 'emg' in ch.lower():
                 win = max(1, int(emg_smooth_ms / 1000 * sfreq_aux))
                 trace = uniform_filter1d(trace, size=win)
-            out[ch] = (trace - trace.mean()) / (trace.std() + 1e-30)
+            out[ch] = trace
+            # # z-score each trace for better visualization (not for correlations)
+            # if z_score_aux:
+            #     out[ch] = (trace - trace.mean()) / (trace.std() + 1e-30)
         return out
 
     right_emg_tr = _get_aux_traces(right_emg)
@@ -259,16 +292,16 @@ def plot_tfr_with_aux(
     # ------------------------------------------------------------------ #
     # Figure layout
     # ------------------------------------------------------------------ #
-    fig = plt.figure(figsize=(18, 24))
+    fig = plt.figure(figsize=(20, 16))
     fig.suptitle(
         f"Epoch: {epoch_type}  |  MEG: {motor_label}  |  n={n_trials} trials",
-        fontsize=FS['suptitle'], y=0.99,
+        fontsize=FS['suptitle'], y=1.01,
     )
 
     gs = gridspec.GridSpec(
         4, 2, figure=fig,
-        height_ratios=[2.0, 1.0, 1.1, 1.1],
-        hspace=0.42, wspace=0.32,
+        height_ratios=[1.7, 0.8, 0.9, 0.9],
+        hspace=0.28, wspace=0.30,
     )
 
     # row 0: TFR
@@ -284,9 +317,10 @@ def plot_tfr_with_aux(
     ax_cor_l = fig.add_subplot(gs[3, 0], sharex=ax_tfr_l)
     ax_cor_r = fig.add_subplot(gs[3, 1], sharex=ax_tfr_l, sharey=ax_cor_l)
 
-    # hide x-tick labels on all but the last row
+    # 1-second major ticks on all panels (shared x-axis propagates automatically)
+    ax_tfr_l.xaxis.set_major_locator(plt.MultipleLocator(1.0))
+    # "Time (s)" label only on bottom row
     for ax in [ax_tfr_l, ax_tfr_r, ax_meg_l, ax_meg_r, ax_aux_l, ax_aux_r]:
-        plt.setp(ax.get_xticklabels(), visible=False)
         ax.set_xlabel("")
 
     # ------------------------------------------------------------------ #
@@ -312,10 +346,10 @@ def plot_tfr_with_aux(
     # ------------------------------------------------------------------ #
     # Row 2: AUX traces
     # ------------------------------------------------------------------ #
-    _plot_aux_panel(ax_aux_l, right_emg_tr, right_acc_tr,
-                    aux_times[aux_mask], "Contralateral AUX — right side")
-    _plot_aux_panel(ax_aux_r, left_emg_tr,  left_acc_tr,
-                    aux_times[aux_mask], "Contralateral AUX — left side")
+    _plot_aux_panel(ax_aux_l, right_emg_tr, right_acc_tr, aux_times[aux_mask],
+                    title="Contralateral AUX — right side", z_score_aux=z_score_aux)
+    _plot_aux_panel(ax_aux_r, left_emg_tr,  left_acc_tr, aux_times[aux_mask],
+                    title="Contralateral AUX — left side", z_score_aux=z_score_aux)
     ax_aux_r.set_ylabel("")
 
     # ------------------------------------------------------------------ #
@@ -323,10 +357,12 @@ def plot_tfr_with_aux(
     # ------------------------------------------------------------------ #
     _plot_corr_panel(ax_cor_l, corr_left_emg, corr_left_acc,
                      tfr_times[tfr_mask], r_crit,
-                     title="Band-power × contra-AUX  r(t) — Left hemi")
+                     title="Band-power × contra-AUX  correlation — Left hemi",
+                     plot_corr_heatmap=plot_corr_heatmap)
     _plot_corr_panel(ax_cor_r, corr_right_emg, corr_right_acc,
                      tfr_times[tfr_mask], r_crit,
-                     title="Band-power × contra-AUX  r(t) — Right hemi")
+                     title="Band-power × contra-AUX  correlation — Right hemi",
+                     plot_corr_heatmap=plot_corr_heatmap)
     ax_cor_r.set_ylabel("")
 
     ax_cor_l.set_xlabel("Time (s)", fontsize=FS['label'])
@@ -334,6 +370,8 @@ def plot_tfr_with_aux(
 
     # uniform x limits
     ax_tfr_l.set_xlim(t0, t1)
+
+    fig.tight_layout()
 
     # ------------------------------------------------------------------ #
     # Save
@@ -343,11 +381,12 @@ def plot_tfr_with_aux(
         assert figures_path, "get_onedrive_path('figures') returned False — OneDrive path not found"
         save_dir = os.path.join(figures_path, 'spectral', 'epoch_tfr')
         os.makedirs(save_dir, exist_ok=True)
-        save_path = os.path.join(save_dir, f"epochTFR_{part_figname}.png")
+        save_path = os.path.join(save_dir, f"epochTFRbehav_{part_figname}.png")
         fig.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"[plot] saved to {save_path}")
 
-    plt.show()
+    if donot_show: plt.close(fig)
+    else: plt.show() 
 
 
 # --------------------------------------------------------------------------- #
@@ -416,58 +455,154 @@ def _plot_evoked_panel(ax, times, mean, sem, title):
               framealpha=0.6, handlelength=1.5)
 
 
-def _plot_aux_panel(ax, emg_traces: dict, acc_traces: dict, times, title):
+def _plot_aux_panel(ax, emg_traces: dict, acc_traces: dict, times, title,
+                    z_score_aux: bool = True,):
     """EMG: purple shades (solid). ACC: orange shades (dashed). Per-channel labels."""
+    acc_ax = ax
+    emg_ax = ax.twinx() if acc_traces and emg_traces else ax
+    
     n_emg = max(len(emg_traces), 1)
     n_acc = max(len(acc_traces), 1)
     emg_colors = plt.colormaps['Purples'](np.linspace(0.45, 0.88, n_emg))
     acc_colors = plt.colormaps['Oranges'](np.linspace(0.45, 0.88, n_acc))
 
     for (name, trace), color in zip(emg_traces.items(), emg_colors):
-        ax.plot(times, trace[-len(times):], color=color, lw=1.3,
-                alpha=0.9, linestyle='-', label=name)
+        name = name.replace('emg_left', 'EMG L ')
+        name = name.replace('emg_right', 'EMG R ')
+        emg_ax.plot(times, trace[-len(times):], color=color, lw=3,
+                    alpha=0.5, linestyle='-', label=name)
     for (name, trace), color in zip(acc_traces.items(), acc_colors):
-        ax.plot(times, trace[-len(times):], color=color, lw=1.1,
-                alpha=0.85, linestyle='--', label=name)
-
-    ax.axvline(0, color='k', linestyle='--', linewidth=0.9)
-    ax.axhline(0, color='gray', linestyle=':', linewidth=0.6)
-    ax.set_ylabel("Amplitude (z)", fontsize=FS['label'])
-    ax.set_title(title, fontsize=FS['title'])
-    ax.tick_params(labelsize=FS['tick'])
-    if emg_traces or acc_traces:
+        name = name.replace('acc_left', 'L ').replace('_', ' ')
+        name = name.replace('acc_right', 'R ')
+        acc_ax.plot(times, trace[-len(times):], color=color, lw=3,
+                alpha=0.5, linestyle='-', label=name)
+    # add legend labels and handles emg_ax to ax if both emg and acc are present
+    if emg_traces and acc_traces:
+        handles_emg, labels_emg = emg_ax.get_legend_handles_labels()
+        handles_acc, labels_acc = acc_ax.get_legend_handles_labels()
+        ax.legend(handles_emg + handles_acc, labels_emg + labels_acc,
+                    fontsize=FS['legend'], loc='upper right', ncol=3,
+                    framealpha=0.6, handlelength=1.5)
+    elif emg_traces or acc_traces:
         ax.legend(fontsize=FS['legend'], loc='upper right', ncol=3,
                   framealpha=0.6, handlelength=1.5)
 
-
-def _plot_corr_panel(ax, corr_emg: dict, corr_acc: dict,
-                     times, r_crit: float, title: str):
-    """
-    Per-band r(t) time series. EMG: solid, ACC: dashed.
-    Each band gets a distinct color (BAND_COLORS).
-    Significance threshold shown as horizontal dotted lines at ±r_crit.
-    """
-    band_names = list(FREQ_BANDS.keys())
-
-    for band, color in zip(band_names, BAND_COLORS):
-        r_emg = corr_emg.get(band)
-        r_acc = corr_acc.get(band)
-
-        if r_emg is not None:
-            ax.plot(times, r_emg[-len(times):], color=color, lw=1.4,
-                    linestyle='-',  alpha=0.85, label=f"{band} EMG")
-        if r_acc is not None:
-            ax.plot(times, r_acc[-len(times):], color=color, lw=1.2,
-                    linestyle='--', alpha=0.75, label=f"{band} ACC")
-
-    ax.axhline( r_crit, color='gray', linestyle=':', linewidth=0.9,
-               label=f'p=0.05 (r={r_crit:.2f})')
-    ax.axhline(-r_crit, color='gray', linestyle=':', linewidth=0.9)
-    ax.axhline(0, color='k', linewidth=0.7)
     ax.axvline(0, color='k', linestyle='--', linewidth=0.9)
-    ax.set_ylim(-1.05, 1.25)  # higher to show legend better outside of lines
-    ax.set_ylabel("Pearson r", fontsize=FS['label'])
+    ax.axhline(0, color='gray', linestyle=':', linewidth=0.6)
+    # get correct ylabels, z-scored or not
+    if emg_traces:
+        emg_ax.set_ylabel("EMG amplitude (z)" if z_score_aux else "EMG amplitude (V)", fontsize=FS['label'])
+    if acc_traces:
+        acc_ax.set_ylabel("ACC amplitude (z)" if z_score_aux else "ACC amplitude (g)", fontsize=FS['label'])
+    if z_score_aux:
+        ax.set_ylabel("Amplitude (z)", fontsize=FS['label'])
     ax.set_title(title, fontsize=FS['title'])
     ax.tick_params(labelsize=FS['tick'])
-    ax.legend(fontsize=FS['legend'] - 1, loc='upper right', ncol=3,
-              framealpha=0.6, handlelength=1.5)
+    
+
+def _plot_corr_panel(ax, corr_emg: dict, corr_acc: dict,
+                     times, r_crit: float, title: str,
+                     plot_corr_heatmap: bool = False):
+    """
+    Per-band r(t). Two styles controlled by plot_corr_heatmap:
+
+    False (default) — line plots, one colour per band; EMG solid, ACC dashed.
+    True            — heatmap (bands × time), EMG rows on top, ACC rows below,
+                      separated by a black line. Colormap: RdBu_r centred at 0.
+    """
+    band_names = list(FREQ_BANDS.keys())
+    n_bands    = len(band_names)
+
+    if not plot_corr_heatmap:
+        # ---- line-plot style ------------------------------------------ #
+        for band, color in zip(band_names, BAND_COLORS):
+            r_emg = corr_emg.get(band)
+            r_acc = corr_acc.get(band)
+            if r_emg is not None:
+                r = r_emg[-len(times):]
+                ax.plot(times, r, color=color, lw=1.4,
+                        linestyle='-',  alpha=0.85, label=f"{band} EMG")
+                # black outline on significant segments
+                ax.plot(times, np.where(np.abs(r) > r_crit, r, np.nan),
+                        color='k', lw=2.5, alpha=0.5, linestyle='-', zorder=3)
+            if r_acc is not None:
+                r = r_acc[-len(times):]
+                ax.plot(times, r, color=color, lw=1.2,
+                        linestyle='--', alpha=0.75, label=f"{band} ACC")
+                # black outline on significant segments
+                ax.plot(times, np.where(np.abs(r) > r_crit, r, np.nan),
+                        color='k', lw=2.5, alpha=0.5, linestyle='--', zorder=3)
+
+        ax.axhline( r_crit, color='gray', linestyle=':', linewidth=0.9,
+                   label=f'p=0.05 (r={r_crit:.2f})')
+        ax.axhline(-r_crit, color='gray', linestyle=':', linewidth=0.9)
+        ax.axhline(0, color='k', linewidth=0.7)
+        ax.axvline(0, color='k', linestyle='--', linewidth=0.9)
+        ax.set_ylim(-1.05, 1.25)
+        ax.set_ylabel("Pearson r over time", fontsize=FS['label'])
+        ax.set_title(title, fontsize=FS['title'])
+        ax.tick_params(labelsize=FS['tick'])
+        ax.legend(fontsize=FS['legend'] - 1, loc='upper right', ncol=3,
+                  framealpha=0.6, handlelength=1.5)
+
+    else:
+        # ---- heatmap style -------------------------------------------- #
+        # matrix: (2*n_bands, n_times) — EMG rows [0..n_bands), ACC rows [n_bands..2*n_bands)
+        mat = np.full((2 * n_bands, len(times)), np.nan)
+        for i, band in enumerate(band_names):
+            if corr_emg.get(band) is not None:
+                mat[i, :] = corr_emg[band][-len(times):]
+            if corr_acc.get(band) is not None:
+                mat[n_bands + i, :] = corr_acc[band][-len(times):]
+
+        # y_edges has n+1 values so pcolormesh treats them as cell edges:
+        # row i spans [i, i+1], centres at i+0.5 — consistent with ticks/rects/separator
+        y_edges = np.arange(2 * n_bands + 1, dtype=float)
+        pcolor_shading = 'flat'
+        if pcolor_shading == 'flat' and len(times) == mat.shape[1]:
+            print('adjust array shapes pcolormesh for shading=flat', times.shape, y_edges.shape, mat.shape)
+            times = np.concatenate([times, [times[-1] + (times[-1] - times[-2])]])  # add one more time point at the end
+        elif pcolor_shading == 'auto' and len(times) == mat.shape[1] + 1:
+            print('adjust array shapes pcolormesh for shading=auto', times.shape, y_edges.shape, mat.shape)
+            times = times[:-1]  # remove the last time point
+        im = ax.pcolormesh(times, y_edges, mat, vmin=-1, vmax=1,
+                           shading=pcolor_shading, cmap='RdBu_r',)
+        ax.set_xlim(times[0], times[-1])
+        ax.set_ylim(0, 2 * n_bands)
+
+        # black rectangles around significant time segments within each band row
+        from matplotlib.patches import Rectangle
+        dt = (times[1] - times[0]) if len(times) > 1 else 0.0
+        for row_idx in range(2 * n_bands):
+            sig = np.abs(mat[row_idx]) > r_crit
+            sig_pad = np.concatenate([[False], sig, [False]])
+            starts = np.where(np.diff(sig_pad.astype(int)) ==  1)[0]
+            ends   = np.where(np.diff(sig_pad.astype(int)) == -1)[0]
+            for s, e in zip(starts, ends):
+                x0 = times[s] - dt / 2
+                x1 = times[min(e, len(times) - 1)] + dt / 2
+                ax.add_patch(Rectangle(
+                    (x0, row_idx), x1 - x0, 1.0,
+                    linewidth=1.4, edgecolor='black', facecolor='none', zorder=5,
+                ))
+
+        # separator between EMG and ACC
+        ax.axhline(n_bands, color='k', linewidth=1.5)
+        ax.axvline(0, color='k', linestyle='--', linewidth=0.9)
+
+        # y-ticks: band names, one per row
+        ax.set_yticks(np.arange(2 * n_bands) + 0.5)
+        ax.set_yticklabels(band_names + band_names, fontsize=FS['tick'])
+
+        # section labels (EMG / ACC) on a twin y-axis on the right
+        ax2 = ax.twinx()
+        ax2.set_ylim(0, 2 * n_bands)
+        ax2.set_yticks([n_bands / 2, n_bands + n_bands / 2])
+        ax2.set_yticklabels(['EMG', 'ACC'], fontsize=FS['label'])
+        ax2.tick_params(length=0)
+
+        ax.set_title(title, fontsize=FS['title'])
+        ax.tick_params(labelsize=FS['tick'])
+        plt.colorbar(im, ax=ax2,
+                     label=f"Pearson r  (crit ±{r_crit:.2f})",
+                     pad=0.12).ax.tick_params(labelsize=FS['tick'])
