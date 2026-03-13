@@ -14,7 +14,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
               CHECKING_FREQ_FrameSec: int = 100,
               verbose = False,
               TRIGGER_PIN=None,
-              acc_inlet=None,):
+              acc_inlet=None, acc_bases=None,):
     """
     
     Abort trials: depending on successful or unsuccessful
@@ -67,6 +67,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
                                                      responded, outlet, trial_type,
                                                      FEEDBACK_TYPE=cfg['check_correct_dtype'],
                                                      acc_inlet=acc_inlet,
+                                                     acc_bases=acc_bases,
                                                      verbose=verbose,)
             clock.tick(CHECKING_FREQ_FrameSec)
 
@@ -89,6 +90,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
                                                      responded, outlet, trial_type,
                                                      FEEDBACK_TYPE=cfg['check_correct_dtype'],
                                                      acc_inlet=acc_inlet,
+                                                    acc_bases=acc_bases,
                                                      verbose=verbose,)
             clock.tick(CHECKING_FREQ_FrameSec)
 
@@ -112,6 +114,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
                                                      responded, outlet, trial_type,
                                                      abort_intime=True,
                                                      FEEDBACK_TYPE=cfg['check_correct_dtype'],
+                                                     acc_bases=acc_bases,
                                                      acc_inlet=acc_inlet,
                                                      verbose=verbose,)
             clock.tick(CHECKING_FREQ_FrameSec)
@@ -133,11 +136,11 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
                 if verbose: print('.........check abort\tOVERTIME')
                 
                 response, rt, responded = check_response(cfg, stim_onset, trial_direction,
-                                                        responded, outlet, trial_type,
-                                                        abort_intime=False,
-                                                        FEEDBACK_TYPE=cfg['check_correct_dtype'],
-                                                        acc_inlet=acc_inlet,
-                                                        verbose=verbose,)
+                                                         responded, outlet, trial_type,
+                                                         abort_intime=False,
+                                                         FEEDBACK_TYPE=cfg['check_correct_dtype'],
+                                                         acc_inlet=acc_inlet,
+                                                         verbose=verbose,)
                 clock.tick(CHECKING_FREQ_FrameSec)
 
 
@@ -177,7 +180,7 @@ def check_response(cfg, stim_onset, stim_direction,
                    responded, outlet, trial_type,
                    abort_intime: bool = True,
                    FEEDBACK_TYPE: str = 'none',
-                   acc_inlet=None,
+                   acc_inlet=None, acc_bases=None,
                    verbose=False,):
 
     """
@@ -212,8 +215,10 @@ def check_response(cfg, stim_onset, stim_direction,
             FEEDBACK_TYPE == 'acc' and acc_inlet is not None
             and trial_type == 'abort' and not responded
         ):
+            print('.........check abort\tACC')
             response, rt, responded = check_acc_abort_response(
                 inlet=acc_inlet,
+                acc_bases=acc_bases,
                 stim_direction=stim_direction,
                 stim_onset=stim_onset,
                 response=response,
@@ -221,10 +226,7 @@ def check_response(cfg, stim_onset, stim_direction,
                 rt=rt,
                 trial_type=trial_type,
                 abort_intime=abort_intime,
-                threshold=cfg['acc_threshold'],
                 window_ms=cfg.get('acc_window_ms', 100),
-                ch_left=cfg.get('acc_ch_left', 0),
-                ch_right=cfg.get('acc_ch_right', 1),
             )
         
         if responded:

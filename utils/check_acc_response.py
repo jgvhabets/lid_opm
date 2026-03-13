@@ -1,25 +1,101 @@
 import time
 import numpy as np
-from pylsl import StreamInlet, resolve_stream
+from pylsl import StreamInlet, resolve_streams
 
 
-def create_acc_inlet(stream_name: str = 'acc', timeout: float = 5.0) -> StreamInlet:
+
+ACC_LSL_IDX = {'left': [9, 10, 11], 'right': [6, 7, 8]}  # example channel indices for left and right ACC; adjust as needed
+
+
+def create_acc_inlet(stream_name: str = 'acc', timeout: float = 5.0,
+                     max_buffer_sec=.25,) -> StreamInlet:
     """Resolve an ACC LSL stream and return a connected StreamInlet.
 
     Call this once before starting the task loop and pass the returned
     inlet to run_trial() via the acc_inlet parameter.
     """
-    streams = resolve_stream('name', stream_name, timeout=timeout)
+    streams = resolve_streams()
     if not streams:
         raise RuntimeError(
             f"No LSL stream named '{stream_name}' found within {timeout} s. "
             "Make sure the ACC stream is broadcasting before starting the task."
         )
-    return StreamInlet(streams[0], max_buflen=5)
+    
+    # print available streams
+    print("Available ACC streams:")
+    for s in streams:
+        if 'LID_MEG' in s.name() and not 'TRG' in s.name():
+            aux_stream = s
+    
+    print(f'selected stream for ACC-EMG: {aux_stream.name()}')
+    print(f'sampling rate: {aux_stream.nominal_srate()} Hz')
+    
+    aux_stream = StreamInlet(aux_stream,
+                             max_buflen=int(aux_stream.nominal_srate() * max_buffer_sec),
+                             max_chunklen=int(aux_stream.nominal_srate() * max_buffer_sec))  # adjust max_chunklen as needed for expected sample rates and processing speed
+
+    # Print basic channel count
+    print(f"Number of channels: {aux_stream.info().channel_count()}")
+    print(f"Sampling rate: {aux_stream.info().nominal_srate()}")
+
+    # get baseline for acc hands
+    base_left, base_right = get_acc_baselines(aux_stream)
+    print(f"ACC baseline - Left hand: {base_left:.2f}, Right hand: {base_right:.2f}")
+    acc_bases = {'left': base_left, 'right': base_right}
+
+    return aux_stream, acc_bases
+
+
+import matplotlib.pyplot as plt
+
+def get_acc_baselines(inlet: StreamInlet, duration_sec: float = 10.0,):
+
+    ch_left = ACC_LSL_IDX['left']
+    ch_right = ACC_LSL_IDX['right']
+
+    print(f"Collecting {duration_sec} seconds of baseline ACC data for left and right hands...")
+    start_time = time.time()
+
+    left_samples = []
+    right_samples = []
+
+    all_samples = []
+
+    while time.time() - start_time < duration_sec:
+        samples, timestamps = inlet.pull_chunk(timeout=0.1, max_samples=250)
+        if samples:
+            samples_left = np.array(samples)[:, ch_left]
+            samples_right = np.array(samples)[:, ch_right]
+            # detrend by removing mean of raw values (pos and neg)
+            samples_left = samples_left - np.mean(samples_left)
+            samples_right = samples_right - np.mean(samples_right)
+            # compute RMS amplitude (vector length) for each channel group
+            vector_left = np.sqrt(np.mean(samples_left ** 2))
+            vector_right = np.sqrt(np.mean(samples_right ** 2))
+            left_samples.append(vector_left)
+            right_samples.append(vector_right)
+
+
+
+    # plt.figure()
+    # plt.plot(left_samples, label='Left hand ACC vectors')
+    # plt.plot(right_samples, label='Right hand ACC vectors')
+    # plt.title('ACC Baseline Samples')
+    # plt.xlabel('Sample')
+    # plt.ylabel('RMS Amplitude')
+    # plt.legend()
+    # plt.show()
+
+    # Compute baseline means
+    baseline_left = np.mean(left_samples) + (np.std(left_samples) * 4) 
+    baseline_right = np.mean(right_samples) + (np.std(right_samples) * 4)
+
+    return baseline_left, baseline_right
 
 
 def check_acc_abort_response(
     inlet: StreamInlet,
+    acc_bases: dict,
     stim_direction: str,
     stim_onset: float,
     response,
@@ -27,10 +103,7 @@ def check_acc_abort_response(
     rt,
     trial_type: str,
     abort_intime: bool,
-    threshold: float,
     window_ms: float = 100,
-    ch_left: int = 0,
-    ch_right: int = 1,
 ):
     """
     Pull buffered ACC samples and detect movement on the stimulated body side.
@@ -66,12 +139,15 @@ def check_acc_abort_response(
     -------
     response, rt, responded  (same contract as check_response_keys)
     """
+    print(f'start ACCresponse')
+
     if responded:
         return response, rt, responded
 
     # non-blocking pull of all buffered samples
-    samples, timestamps = inlet.pull_chunk(timeout=0.0)
+    samples, timestamps = inlet.pull_chunk(timeout=0.0, max_samples=250)
     if not samples:
+        print("No ACC samples received.")
         return response, rt, responded
 
     samples    = np.array(samples)     # (n_samples, n_channels)
@@ -84,10 +160,13 @@ def check_acc_abort_response(
         return response, rt, responded
 
     # pick the channel matching the stimulated body side
-    ch_idx = ch_left if stim_direction.lower() == 'left' else ch_right
-    rms = np.sqrt(np.mean(recent[:, ch_idx] ** 2))
+  
+    samples = recent[:, ACC_LSL_IDX[stim_direction]]
+    samples = samples - np.mean(samples, axis=0)  # detrend by removing mean of raw values (pos and neg)
+    rms = np.sqrt(np.mean(samples ** 2))
+    print(f'RMS ACC: {rms:.2f}, from shape: {samples.shape}, using baseline: {acc_bases[stim_direction]:.2f}')
 
-    if rms > threshold:
+    if rms > acc_bases[stim_direction] * 6:  # example threshold: 1.5x baseline; adjust as needed
         responded = True
         rt = time.time() - stim_onset
 
@@ -100,5 +179,7 @@ def check_acc_abort_response(
                 response = 'correctIntime'
             else:
                 response = 'incorrectOvertime'
+    
+        print(f"ACC response detected ({response})! RMS: {rms:.2f}, RT: {rt:.3f} s")
 
     return response, rt, responded

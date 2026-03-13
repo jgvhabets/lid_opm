@@ -96,10 +96,10 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
 
     # only create ACC inlet if we have abort trials, otherwise save resources
     if "abort" in trials and cfg['check_correct_dtype'] == 'acc':
-        active_acc_inlet = create_acc_inlet()
+        lsl_inlet, acc_bases = create_acc_inlet()
         print("Connected to ACC LSL stream for abort trial feedback.")
     else:
-        active_acc_inlet = None
+        lsl_inlet, acc_bases = None, None
 
     ### Waiting screen before starting task
     send_marker(outlet, f"TASK_INIT_beforeWaitScreen")
@@ -123,7 +123,7 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
 
         # if trial type is abort, insert true acc-inlet, otherwise pass None to save resources in trial loop
         if trial_type == 'abort':
-            use_acc_inlet = active_acc_inlet
+            use_acc_inlet = lsl_inlet
         else:
             use_acc_inlet = None
 
@@ -132,6 +132,7 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
                                trial_direction=trial_direction,
                                TRIGGER_PIN=TRIGGER_PIN,
                                acc_inlet=use_acc_inlet,
+                               acc_bases=acc_bases,
                                verbose=verbose,)
         trial_data["trial"] = t + 1
         trial_data["timestamp"] = time.time() - exp_start
