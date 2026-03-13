@@ -7,13 +7,14 @@ from tasks.stimuli import (
 )
 from utils.lsl_stream import send_marker
 from tasks.arduino_trigger import send_trigger
-
+from utils.check_acc_response import check_acc_abort_response
 
 def run_trial(screen, trial_type, cfg, clock, outlet=None,
               trial_direction=None, abort_go_duration=None,
               CHECKING_FREQ_FrameSec: int = 100,
               verbose = False,
-              TRIGGER_PIN=None,):
+              TRIGGER_PIN=None,
+              acc_inlet=None,):
     """
     
     Abort trials: depending on successful or unsuccessful
@@ -65,10 +66,11 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
             response, rt, responded = check_response(cfg, stim_onset, trial_direction,
                                                      responded, outlet, trial_type,
                                                      FEEDBACK_TYPE=cfg['check_correct_dtype'],
+                                                     acc_inlet=acc_inlet,
                                                      verbose=verbose,)
             clock.tick(CHECKING_FREQ_FrameSec)
 
-     
+
 
     elif trial_type == "nogo":
         # Show red square for entire duration
@@ -78,7 +80,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
                                        cfg["arrow_size"], direction=trial_direction,)
         pygame.display.flip()
         send_marker(outlet, f"STIM_ONSET_nogo_{trial_direction}")
-        
+
         if verbose: print(f'\n\nSTART {trial_type}, direction: {trial_direction}')
 
         while (time.time() - stim_onset < cfg["stimulus_duration"]) and not responded:
@@ -86,6 +88,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
             response, rt, responded = check_response(cfg, stim_onset, trial_direction,
                                                      responded, outlet, trial_type,
                                                      FEEDBACK_TYPE=cfg['check_correct_dtype'],
+                                                     acc_inlet=acc_inlet,
                                                      verbose=verbose,)
             clock.tick(CHECKING_FREQ_FrameSec)
 
@@ -109,6 +112,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
                                                      responded, outlet, trial_type,
                                                      abort_intime=True,
                                                      FEEDBACK_TYPE=cfg['check_correct_dtype'],
+                                                     acc_inlet=acc_inlet,
                                                      verbose=verbose,)
             clock.tick(CHECKING_FREQ_FrameSec)
 
@@ -132,6 +136,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
                                                         responded, outlet, trial_type,
                                                         abort_intime=False,
                                                         FEEDBACK_TYPE=cfg['check_correct_dtype'],
+                                                        acc_inlet=acc_inlet,
                                                         verbose=verbose,)
                 clock.tick(CHECKING_FREQ_FrameSec)
 
@@ -172,16 +177,19 @@ def check_response(cfg, stim_onset, stim_direction,
                    responded, outlet, trial_type,
                    abort_intime: bool = True,
                    FEEDBACK_TYPE: str = 'none',
+                   acc_inlet=None,
                    verbose=False,):
-    
+
     """
-    Helper to check for keypress during stimulus display.
+    Helper to check for keypress or ACC movement during stimulus display.
     """
-    
+
+    if FEEDBACK_TYPE is None:
+        FEEDBACK_TYPE = 'none'
     FEEDBACK_TYPE = FEEDBACK_TYPE.lower()
 
     allowed_dtypes = ['none', 'keys', 'acc']
-    
+
     assert FEEDBACK_TYPE in allowed_dtypes, (
         f'correctness feedback datatype given ("{FEEDBACK_TYPE}") not'
         f' allowed; should be in {allowed_dtypes}.'
@@ -192,16 +200,35 @@ def check_response(cfg, stim_onset, stim_direction,
     rt = None
 
     for event in pygame.event.get():
-    
-        if FEEDBACK_TYPE == 'keys':
+
+        if FEEDBACK_TYPE == 'keys' and trial_type == 'abort' and not responded:
             response, rt, responded = check_response_keys(
                 event, response, responded, stim_onset, rt,
                 stim_direction, trial_type, abort_intime
             )
-            
+
+        # ACC check is independent of pygame events
+        elif (
+            FEEDBACK_TYPE == 'acc' and acc_inlet is not None
+            and trial_type == 'abort' and not responded
+        ):
+            response, rt, responded = check_acc_abort_response(
+                inlet=acc_inlet,
+                stim_direction=stim_direction,
+                stim_onset=stim_onset,
+                response=response,
+                responded=responded,
+                rt=rt,
+                trial_type=trial_type,
+                abort_intime=abort_intime,
+                threshold=cfg['acc_threshold'],
+                window_ms=cfg.get('acc_window_ms', 100),
+                ch_left=cfg.get('acc_ch_left', 0),
+                ch_right=cfg.get('acc_ch_right', 1),
+            )
+        
         if responded:
             send_marker(outlet, f"RESPONSE_{trial_type}_{response}_RT={rt:.3f}")
-            
             if verbose: print(f"freshly CATCHED RESPONSE_{trial_type}_{response}_RT={rt:.3f}")
 
     return response, rt, responded

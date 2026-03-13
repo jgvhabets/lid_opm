@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 
 from tasks.trial import run_trial
+from utils.check_acc_response import create_acc_inlet
 from utils.lsl_stream import send_marker
 import tasks.arduino_trigger as ard_trigger
 
@@ -93,6 +94,13 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
     else:
         TRIGGER_PIN, ARDUINO_BOARD = None, None
 
+    # only create ACC inlet if we have abort trials, otherwise save resources
+    if "abort" in trials and cfg['check_correct_dtype'] == 'acc':
+        active_acc_inlet = create_acc_inlet()
+        print("Connected to ACC LSL stream for abort trial feedback.")
+    else:
+        active_acc_inlet = None
+
     ### Waiting screen before starting task
     send_marker(outlet, f"TASK_INIT_beforeWaitScreen")
 
@@ -113,10 +121,17 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
 
         send_marker(outlet, f"TRIAL_START_{t+1}_{trial_type}_{trial_direction}")
 
+        # if trial type is abort, insert true acc-inlet, otherwise pass None to save resources in trial loop
+        if trial_type == 'abort':
+            use_acc_inlet = active_acc_inlet
+        else:
+            use_acc_inlet = None
+
         trial_data = run_trial(screen, trial_type, cfg, clock, outlet,
                                abort_go_duration=current_abort_duration,
                                trial_direction=trial_direction,
                                TRIGGER_PIN=TRIGGER_PIN,
+                               acc_inlet=use_acc_inlet,
                                verbose=verbose,)
         trial_data["trial"] = t + 1
         trial_data["timestamp"] = time.time() - exp_start
@@ -133,8 +148,10 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
                 current_abort_duration += cfg["abort_step_size"]
 
             # keep inside safe bounds
-            current_abort_duration = max(0.05, min(cfg["stimulus_duration"] - 0.05,
-                                         current_abort_duration))
+            if current_abort_duration < .15:
+                current_abort_duration = .15
+            elif current_abort_duration > 1.0:
+                current_abort_duration = 1.0
             
         if trial_type == 'abort': print(f'adjusted time: {current_abort_duration}')
 
