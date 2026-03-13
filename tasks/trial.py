@@ -1,3 +1,4 @@
+import random
 import pygame
 import time
 
@@ -5,12 +6,11 @@ from tasks.stimuli import (
     draw_fixation, draw_go_stimulus, draw_nogo_stimulus
 )
 from utils.lsl_stream import send_marker
-
 from tasks.arduino_trigger import send_trigger
 
 
 def run_trial(screen, trial_type, cfg, clock, outlet=None,
-              abort_go_duration=None,
+              trial_direction=None, abort_go_duration=None,
               CHECKING_FREQ_FrameSec: int = 100,
               verbose = False,
               TRIGGER_PIN=None,):
@@ -35,7 +35,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     screen.fill(cfg["bg_color"])
     draw_fixation(screen, cfg["fixation_color"], cfg["screen_width"], cfg["screen_height"])
     pygame.display.flip()
-    pygame.time.wait(500)  # additional to ITI
+    # pygame.time.wait(500)  # additional to ITI
 
     # --- Stimulus onset ---
     stim_onset = time.time()
@@ -45,22 +45,24 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     if cfg['USE_ARDUINO']:
         send_trigger(pin=TRIGGER_PIN, TRIG_type=trial_type,)
 
+    if trial_direction is None:
+        trial_direction = random.choice(["left", "right"])   
 
     if trial_type == "go":
         # Show green circle for entire duration
         screen.fill(cfg["bg_color"])
 
-        direction = draw_go_stimulus(screen, cfg["stimulus_color"],
-                                 cfg["screen_width"], cfg["screen_height"],
-                                 cfg["arrow_size"])
+        draw_go_stimulus(screen, cfg["stimulus_color"],
+                                     cfg["screen_width"], cfg["screen_height"],
+                                     cfg["arrow_size"], direction=trial_direction,)
         pygame.display.flip()
-        send_marker(outlet, f"STIM_ONSET_go_{direction}")
+        send_marker(outlet, f"STIM_ONSET_go_{trial_direction}")
 
-        if verbose: print(f'\n\nSTART {trial_type}, direction: {direction}')
+        if verbose: print(f'\n\nSTART {trial_type}, direction: {trial_direction}')
 
         while (time.time() - stim_onset < cfg["stimulus_duration"]) and not responded:
             # only check when not responded yet:
-            response, rt, responded = check_response(cfg, stim_onset, direction,
+            response, rt, responded = check_response(cfg, stim_onset, trial_direction,
                                                      responded, outlet, trial_type,
                                                      FEEDBACK_TYPE=cfg['check_correct_dtype'],
                                                      verbose=verbose,)
@@ -71,17 +73,17 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     elif trial_type == "nogo":
         # Show red square for entire duration
         screen.fill(cfg["bg_color"])
-        direction = draw_nogo_stimulus(screen, cfg["nogo_stimulus_color"],
+        draw_nogo_stimulus(screen, cfg["nogo_stimulus_color"],
                                        cfg["screen_width"], cfg["screen_height"],
-                                       cfg["arrow_size"])
+                                       cfg["arrow_size"], direction=trial_direction,)
         pygame.display.flip()
-        send_marker(outlet, f"STIM_ONSET_nogo_{direction}")
+        send_marker(outlet, f"STIM_ONSET_nogo_{trial_direction}")
         
-        if verbose: print(f'\n\nSTART {trial_type}, direction: {direction}')
+        if verbose: print(f'\n\nSTART {trial_type}, direction: {trial_direction}')
 
         while (time.time() - stim_onset < cfg["stimulus_duration"]) and not responded:
             # only check when not responded yet:
-            response, rt, responded = check_response(cfg, stim_onset, direction,
+            response, rt, responded = check_response(cfg, stim_onset, trial_direction,
                                                      responded, outlet, trial_type,
                                                      FEEDBACK_TYPE=cfg['check_correct_dtype'],
                                                      verbose=verbose,)
@@ -92,18 +94,18 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     elif trial_type == "abort":
         # Phase 1: green go (abort_go_duration)
         screen.fill(cfg["bg_color"])
-        direction = draw_go_stimulus(screen, cfg["stimulus_color"],
+        draw_go_stimulus(screen, cfg["stimulus_color"],
                                  cfg["screen_width"], cfg["screen_height"],
-                                 cfg["arrow_size"])
+                                 cfg["arrow_size"], direction=trial_direction,)
         pygame.display.flip()
-        send_marker(outlet, f"STIM_ONSET_abort_go_{direction}")
+        send_marker(outlet, f"STIM_ONSET_abort_go_{trial_direction}")
         
-        if verbose: print(f'\n\nSTART {trial_type}, direction: {direction}')
+        if verbose: print(f'\n\nSTART {trial_type}, direction: {trial_direction}')
 
         while (time.time() - stim_onset < abort_go_duration) and not responded:
             # only check when not responded yet:
             if verbose: print('.........check abort\tinTIME')
-            response, rt, responded = check_response(cfg, stim_onset, direction,
+            response, rt, responded = check_response(cfg, stim_onset, trial_direction,
                                                      responded, outlet, trial_type,
                                                      abort_intime=True,
                                                      FEEDBACK_TYPE=cfg['check_correct_dtype'],
@@ -116,17 +118,17 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
             screen.fill(cfg["bg_color"])
             draw_nogo_stimulus(screen, cfg["nogo_stimulus_color"],
                         cfg["screen_width"], cfg["screen_height"],
-                        cfg["arrow_size"], direction=direction)
+                        cfg["arrow_size"], direction=trial_direction)
             pygame.display.flip()
-            send_marker(outlet, f"STIM_ONSET_abort_nogo_{direction}")
+            send_marker(outlet, f"STIM_ONSET_abort_nogo_{trial_direction}")
             
-            if verbose: print(f"START PHASE222 abort_nogo_{direction}")
+            if verbose: print(f"START PHASE222 abort_nogo_{trial_direction}")
 
             while (time.time() - stim_onset < cfg["stimulus_duration"]) and not responded:
                 # only check when not responded yet
                 if verbose: print('.........check abort\tOVERTIME')
                 
-                response, rt, responded = check_response(cfg, stim_onset, direction,
+                response, rt, responded = check_response(cfg, stim_onset, trial_direction,
                                                         responded, outlet, trial_type,
                                                         abort_intime=False,
                                                         FEEDBACK_TYPE=cfg['check_correct_dtype'],
@@ -158,7 +160,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     
     return {
         "trial_type": trial_type,
-        "direction": direction,
+        "direction": trial_direction,
         "response": response,
         "rt": rt,
         "abort_go_duration": abort_go_duration if trial_type == "abort" else None,

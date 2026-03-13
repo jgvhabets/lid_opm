@@ -20,6 +20,7 @@ def generate_trials(cfg):
     n_abort = cfg["n_trials"] - n_go - n_nogo
     trials = ["go"] * n_go + ["nogo"] * n_nogo + ["abort"] * n_abort
 
+    random.seed(27)
     random.shuffle(trials)
 
     return trials
@@ -61,6 +62,15 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
     so in the end circa 50% of the trials will be correct.
     """
     trials = generate_trials(cfg)
+    # create lists per trial type, with trial_directions, to later distribute directions
+    # divide 50/50 over left and right
+    random.seed(27)
+    trial_directions = {
+        'go': random.choices(["left", "right"], weights=[0.5, 0.5], k=trials.count("go")),
+        'nogo': random.choices(["left", "right"], weights=[0.5, 0.5], k=trials.count("nogo")),
+        'abort': random.choices(["left", "right"], weights=[0.5, 0.5], k=trials.count("abort"))
+    }
+
     results = []
 
     exp_duration = cfg["experiment_duration"]
@@ -98,11 +108,14 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
         if exp_duration and (time.time() - exp_start) >= exp_duration:
             print("Experiment duration reached, stopping early.")
             break
+        # get direction for this trial and remove it from the list (so next time it will be different, but still balanced overall)
+        trial_direction = trial_directions[trial_type].pop()
 
-        send_marker(outlet, f"TRIAL_START_{t+1}_{trial_type}")
+        send_marker(outlet, f"TRIAL_START_{t+1}_{trial_type}_{trial_direction}")
 
         trial_data = run_trial(screen, trial_type, cfg, clock, outlet,
                                abort_go_duration=current_abort_duration,
+                               trial_direction=trial_direction,
                                TRIGGER_PIN=TRIGGER_PIN,
                                verbose=verbose,)
         trial_data["trial"] = t + 1
@@ -120,13 +133,12 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
                 current_abort_duration += cfg["abort_step_size"]
 
             # keep inside safe bounds
-            current_abort_duration = max(0.05,
-                                         min(cfg["stimulus_duration"] - 0.05,
-                                             current_abort_duration))
+            current_abort_duration = max(0.05, min(cfg["stimulus_duration"] - 0.05,
+                                         current_abort_duration))
             
         if trial_type == 'abort': print(f'adjusted time: {current_abort_duration}')
 
-        send_marker(outlet, f"TRIAL_END_{t+1}")
+        send_marker(outlet, f"TRIAL_END_{t+1}_{trial_type}_{trial_direction}")
 
         iti = jittered_iti(cfg)
         pygame.time.wait(int(iti * 1000))

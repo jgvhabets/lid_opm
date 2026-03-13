@@ -55,15 +55,11 @@ def draw_arrow(screen, color, width, height, size, direction):
 
 def draw_go_stimulus(screen, color, width, height, size, direction=None):
     if direction is None:
-        direction = random.choice(["left", "right"])
+        direction = random.choice(["left", "right"])        
     draw_arrow(screen, color, width, height, size, direction)
-
-    return direction
 
 
 def draw_nogo_stimulus(screen, color, width, height, size, direction=None):
     if direction is None:
         direction = random.choice(["left", "right"])
     draw_arrow(screen, color, width, height, size, direction)
-    
-    return direction
