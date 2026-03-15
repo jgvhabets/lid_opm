@@ -30,9 +30,11 @@ def create_acc_inlet(stream_name: str = 'acc', timeout: float = 5.0,
     print(f'selected stream for ACC-EMG: {aux_stream.name()}')
     print(f'sampling rate: {aux_stream.nominal_srate()} Hz')
     
-    aux_stream = StreamInlet(aux_stream,
-                             max_buflen=int(aux_stream.nominal_srate() * max_buffer_sec),
-                             max_chunklen=int(aux_stream.nominal_srate() * max_buffer_sec))  # adjust max_chunklen as needed for expected sample rates and processing speed
+    aux_stream = StreamInlet(
+        aux_stream,
+        max_buflen=max_buffer_sec,  # keep at least this many SECONDS of data in the inlet buffer
+        max_chunklen=int(aux_stream.nominal_srate() * max_buffer_sec)  # adjust max_chunklen as needed for expected sample rates and processing speed
+    )
 
     # Print basic channel count
     print(f"Number of channels: {aux_stream.info().channel_count()}")

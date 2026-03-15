@@ -202,33 +202,32 @@ def check_response(cfg, stim_onset, stim_direction,
     response = None
     rt = None
 
-    for event in pygame.event.get():
-
-        if FEEDBACK_TYPE == 'keys' and trial_type == 'abort' and not responded:
+    if FEEDBACK_TYPE == 'keys' and not responded:
+        for event in pygame.event.get():
             response, rt, responded = check_response_keys(
                 event, response, responded, stim_onset, rt,
                 stim_direction, trial_type, abort_intime
             )
+            if responded:
+                send_marker(outlet, f"RESPONSE_{trial_type}_{response}_RT={rt:.3f}")
+                if verbose: print(f"freshly CATCHED RESPONSE_{trial_type}_{response}_RT={rt:.3f}")
+    else:
+        pygame.event.pump()  # keep pygame window responsive without processing events
 
-        # ACC check is independent of pygame events
-        elif (
-            FEEDBACK_TYPE == 'acc' and acc_inlet is not None
-            and trial_type == 'abort' and not responded
-        ):
-            print('.........check abort\tACC')
-            response, rt, responded = check_acc_abort_response(
-                inlet=acc_inlet,
-                acc_bases=acc_bases,
-                stim_direction=stim_direction,
-                stim_onset=stim_onset,
-                response=response,
-                responded=responded,
-                rt=rt,
-                trial_type=trial_type,
-                abort_intime=abort_intime,
-                window_ms=cfg.get('acc_window_ms', 100),
-            )
-        
+    if FEEDBACK_TYPE == 'acc' and acc_inlet is not None and acc_bases is not None and not responded:
+        if verbose: print('.........check abort\tACC')
+        response, rt, responded = check_acc_abort_response(
+            inlet=acc_inlet,
+            acc_bases=acc_bases,
+            stim_direction=stim_direction,
+            stim_onset=stim_onset,
+            response=response,
+            responded=responded,
+            rt=rt,
+            trial_type=trial_type,
+            abort_intime=abort_intime,
+            window_ms=cfg.get('acc_window_ms', 100),
+        )
         if responded:
             send_marker(outlet, f"RESPONSE_{trial_type}_{response}_RT={rt:.3f}")
             if verbose: print(f"freshly CATCHED RESPONSE_{trial_type}_{response}_RT={rt:.3f}")
