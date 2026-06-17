@@ -17,7 +17,8 @@ def find_arduino_port():
         if ("SparkFun Pro Micro" in desc or
             "sparkfun" in desc or
             "arduino" in desc or
-            "usb serial" in desc):
+            "usb serial" in desc or
+            "serielles usb" in desc):
 
             print(f"[INFO] Found Arduino/SparkFun device on: {port.device}")
             return port.device
