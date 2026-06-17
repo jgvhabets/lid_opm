@@ -7,5 +7,6 @@
   "fixation_color": [255, 255, 255],
   "response_keys": ["space"],
   "synctrigger_interval": 5,
-  "USE_ARDUINO": false
+  "USE_ARDUINO": true,
+  "ARDUINO_PORT": null
 }

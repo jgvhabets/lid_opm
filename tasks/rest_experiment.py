@@ -48,7 +48,7 @@ def run_experiment(screen, cfg, clock, outlet=None,):
 
     # INIT ADRUINO
     if cfg['USE_ARDUINO']:
-        TRIGGER_PIN, ARDUINO_BOARD = ard_trigger.init_board()
+        TRIGGER_PIN, ARDUINO_BOARD = ard_trigger.init_board(port=cfg.get('ARDUINO_PORT'))
     else:
         TRIGGER_PIN, ARDUINO_BOARD = None, None
 

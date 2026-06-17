@@ -16,10 +16,11 @@
   "nogo_stimulus_color": [255, 0, 0],
   "stimulus_duration": 1.0,
   "abort_go_duration": 0.25,
-  "ADAPT_ABORT_TIME": true,
-  "check_correct_dtype": "acc",
+  "ADAPT_ABORT_TIME": false,
+  "check_correct_dtype": "keys",
   "abort_step_size": 0.05,
   "response_keys": ["space"],
   "log_file": "results.csv",
-  "USE_ARDUINO": false
+  "USE_ARDUINO": true,
+  "ARDUINO_PORT": null
 }

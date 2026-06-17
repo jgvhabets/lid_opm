@@ -4,6 +4,7 @@ import os
 
 from tasks.rest_experiment import run_experiment
 from utils.lsl_stream import create_lsl_outlet
+from tasks.arduino_trigger import find_arduino_port
 
 """
 
@@ -32,6 +33,10 @@ def main():
 
     # load config
     cfg = load_config()
+
+    #Auto-detect and set arduino port if Arduino is enabled
+    if cfg['USE_ARDUINO']:
+        cfg['ARDUINO_PORT'] = cfg.get('ARDUINO_PORT') or find_arduino_port()
 
     # detect available displays
     num_displays = pygame.display.get_num_displays()

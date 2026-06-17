@@ -30,7 +30,7 @@ def find_arduino_port():
 
 
 def init_board(
-    # PORT = 'COM6',          # Deinen Port hier setzen  --> TODO should be automated
+    port = None,          # Deinen Port hier setzen  --> TODO should be automated
     PIN = 9,                # D9 als TTL-Ausgang!  is default in triggerbox hardware
 ):
     """
@@ -47,10 +47,8 @@ def init_board(
     # except:
     #     raise ValueError('COM PORT incorrect? --> check "DeviceManger" or "GeräteManager"')
     
-    port = find_arduino_port()
-
     if port is None:
-        print("[FATAL ARDUINO] Cannot continue without a valid port.")
+        port = find_arduino_port()
 
     # Connect using pyfirmata2
     print("[INFO] Connecting to arduino...")
