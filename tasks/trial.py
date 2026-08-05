@@ -1,13 +1,18 @@
 import random
 import pygame
 import time
+import numpy as np
 
 from tasks.stimuli import (
     draw_fixation, draw_go_stimulus, draw_nogo_stimulus
 )
 from utils.lsl_stream import send_marker
 from tasks.arduino_trigger import send_trigger
-from utils.check_acc_response import check_acc_abort_response
+from utils.check_acc_response import (
+    check_acc_abort_response,
+    calibrate_first_trial_threshold,
+    compute_acc_euclidean_norm,
+)
 
 def run_trial(screen, trial_type, cfg, clock, outlet=None,
               trial_direction=None, abort_go_duration=None,
@@ -27,6 +32,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     """
     response = None
     rt = None
+    abort_acc_window = []
 
     # take default go-abort time at beginning
     if abort_go_duration is None:
@@ -38,16 +44,32 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     pygame.display.flip()
     # pygame.time.wait(500)  # additional to ITI
 
-    # --- Stimulus onset ---
-    stim_onset = time.time()
-    responded = False
-
     ### SEND ARDUINO TRIGGER
     if cfg['USE_ARDUINO']:
         send_trigger(pin=TRIGGER_PIN, TRIG_type=trial_type,)
 
     if trial_direction is None:
         trial_direction = random.choice(["left", "right"])   
+
+    if (
+        trial_type == "abort"
+        and cfg.get("ADAPT_ABORT_TIME")
+        and cfg.get("move_threshold") is None
+        and acc_inlet is not None
+    ):
+        move_threshold = calibrate_first_trial_threshold(
+            acc_inlet,
+            trial_direction,
+            calibration_ms=200.0,
+        )
+        if move_threshold == move_threshold:
+            cfg["move_threshold"] = move_threshold
+            if verbose:
+                print(f"Calibrated move threshold: {move_threshold:.4f}")
+        elif verbose:
+            print("Move-threshold calibration failed; leaving threshold unset.")
+
+    stim_onset = time.time()
 
     if trial_type == "go":
         # Show green circle for entire duration
@@ -117,6 +139,10 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
                                                      acc_bases=acc_bases,
                                                      acc_inlet=acc_inlet,
                                                      verbose=verbose,)
+            if acc_inlet is not None:
+                samples, _timestamps = acc_inlet.pull_chunk(timeout=0.0, max_samples=250)
+                if samples:
+                    abort_acc_window.extend(samples)
             clock.tick(CHECKING_FREQ_FrameSec)
 
         # Phase 2: switch to red nogo
@@ -148,7 +174,15 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     if verbose: print('collected response:', response)
     
     CORRECT_ABORT = None
+    abort_acc_summary = None
     if trial_type == 'abort' and cfg['ADAPT_ABORT_TIME']:
+        if abort_acc_window:
+            abort_acc_summary = compute_acc_euclidean_norm(
+                np.asarray(abort_acc_window),
+                trial_direction,
+            )
+            print(f"abort ACC summary: {abort_acc_summary}")
+
         if type(response) == str:
             if 'correct' in response and not 'incorrect' in response:
                 if 'overtime' in response.lower():
@@ -172,6 +206,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
         "response": response,
         "rt": rt,
         "abort_go_duration": abort_go_duration if trial_type == "abort" else None,
+        "abort_acc_summary": abort_acc_summary,
         "CORRECT_ABORT": CORRECT_ABORT
     }
 

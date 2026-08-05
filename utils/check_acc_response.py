@@ -95,6 +95,59 @@ def get_acc_baselines(inlet: StreamInlet, duration_sec: float = 10.0,):
     return baseline_left, baseline_right
 
 
+def compute_acc_euclidean_norm(acc_samples: np.ndarray, stim_direction: str) -> float:
+    """Compute the Euclidean norm for the 3-axis ACC window on one side.
+
+    The helper keeps the task logic aligned with the project style by
+    operating on the raw buffered window and returning a single movement
+    summary value for the selected side.
+    """
+    samples = np.asarray(acc_samples)
+    if samples.size == 0:
+        return float("nan")
+
+    side_samples = samples[:, ACC_LSL_IDX[stim_direction]]
+    side_samples = side_samples - np.mean(side_samples, axis=0)
+    euclidean_norm = np.sqrt(np.sum(side_samples ** 2, axis=1))
+
+    return float(np.max(euclidean_norm))
+
+
+def calibrate_first_trial_threshold(
+    inlet: StreamInlet,
+    stim_direction: str,
+    calibration_ms: float = 200.0,
+    max_samples: int = 250,
+) -> float:
+    """Calibrate the movement threshold from a short fixation baseline.
+
+    The helper collects ACC samples for the requested window, computes the
+    Euclidean norm for each sample on the stimulated side, and returns
+    mean + 3 * SD as the movement threshold.
+    """
+    if calibration_ms <= 0:
+        return float("nan")
+
+    start_time = time.time()
+    baseline_samples = []
+
+    while (time.time() - start_time) * 1000.0 < calibration_ms:
+        samples, _timestamps = inlet.pull_chunk(timeout=0.01, max_samples=max_samples)
+        if samples:
+            side_samples = np.asarray(samples)[:, ACC_LSL_IDX[stim_direction]]
+            baseline_samples.append(side_samples)
+
+    if not baseline_samples:
+        return float("nan")
+
+    baseline_window = np.vstack(baseline_samples)
+    euclidean_norms = np.sqrt(np.sum(baseline_window ** 2, axis=1))
+    mean_norm = float(np.mean(euclidean_norms))
+    sd_norm = float(np.std(euclidean_norms))
+
+    return mean_norm + (3.0 * sd_norm)
+
+
 def check_acc_abort_response(
     inlet: StreamInlet,
     acc_bases: dict,

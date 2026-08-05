@@ -7,6 +7,7 @@ from datetime import datetime
 
 from tasks.trial import run_trial
 from utils.check_acc_response import create_acc_inlet
+from utils.response_inhibition_tracker import ResponseInhibitionTracker
 from utils.lsl_stream import send_marker
 import tasks.arduino_trigger as ard_trigger
 
@@ -73,9 +74,18 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
     }
 
     results = []
+    stop_trial_count = 0
 
     exp_duration = cfg["experiment_duration"]
-    current_abort_duration = cfg["abort_go_duration"]
+    stop_tracker = ResponseInhibitionTracker(
+        initial_ssd_ms=cfg["abort_go_duration"] * 1000.0,
+        step_size_ms=cfg["abort_step_size"] * 1000.0,
+        min_ssd_ms=cfg.get("abort_min_duration", 0.15) * 1000.0,
+        max_ssd_ms=cfg.get("abort_max_duration", 1.0) * 1000.0,
+        stop_window_size=cfg.get("stop_window_size", 15),
+        convergence_sd_ms=cfg.get("convergence_sd_ms", 30.0),
+        go_rt_limit_ms=cfg.get("go_rt_limit_ms", 800.0),
+    )
 
     # prepare log folder, __file__ is something like .../code/repo_root/gonogo_task/experiment.py
     gonogo_task_dir = os.path.dirname(os.path.abspath(__file__))
@@ -94,8 +104,8 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
     else:
         TRIGGER_PIN, ARDUINO_BOARD = None, None
 
-    # only create ACC inlet if we have abort trials, otherwise save resources
-    if "abort" in trials and cfg['check_correct_dtype'] == 'acc':
+    # create ACC inlet if we need ACC-based feedback or adaptive abort timing
+    if "abort" in trials and (cfg['check_correct_dtype'] == 'acc' or cfg.get('ADAPT_ABORT_TIME')):
         lsl_inlet, acc_bases = create_acc_inlet()
         print("Connected to ACC LSL stream for abort trial feedback.")
     else:
@@ -124,11 +134,13 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
         # if trial type is abort, insert true acc-inlet, otherwise pass None to save resources in trial loop
         if trial_type == 'abort':
             use_acc_inlet = lsl_inlet
+            abort_go_duration = stop_tracker.get_current_ssd_ms() / 1000.0
         else:
             use_acc_inlet = None
+            abort_go_duration = None
 
         trial_data = run_trial(screen, trial_type, cfg, clock, outlet,
-                               abort_go_duration=current_abort_duration,
+                               abort_go_duration=abort_go_duration,
                                trial_direction=trial_direction,
                                TRIGGER_PIN=TRIGGER_PIN,
                                acc_inlet=use_acc_inlet,
@@ -140,21 +152,36 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
 
         # --- adaptive staircase for abort ---
         if trial_type == "abort" and cfg['ADAPT_ABORT_TIME']:
-            if verbose:
-                print(f'abort correct?\t{trial_data["CORRECT_ABORT"]}')
-                print(f'current time: {current_abort_duration}')
-            if trial_data["CORRECT_ABORT"]:
-                current_abort_duration -= cfg["abort_step_size"]
-            else:
-                current_abort_duration += cfg["abort_step_size"]
+            stop_trial_count += 1
+            move_threshold = cfg.get("move_threshold")
+            abort_acc_summary = trial_data.get("abort_acc_summary")
 
-            # keep inside safe bounds
-            if current_abort_duration < .15:
-                current_abort_duration = .15
-            elif current_abort_duration > 1.0:
-                current_abort_duration = 1.0
+            if verbose:
+                print(f'current time: {abort_go_duration}')
+                print(f'abort ACC summary: {abort_acc_summary}')
+                print(f'move threshold: {move_threshold}')
+
+            stop_update = stop_tracker.record_stop_trial_from_summary(
+                move_summary=abort_acc_summary,
+                move_threshold=move_threshold,
+            )
+            trial_data["next_abort_go_duration"] = stop_update.next_ssd_ms / 1000.0
+            trial_data["abort_update_decision"] = stop_update.decision
+            trial_data["stop_success"] = stop_update.stop_success
+
+            if verbose:
+                print(f'next time: {stop_update.next_ssd_ms / 1000.0}')
+                print(f'decision: {stop_update.decision}')
+                print(f'stop success: {stop_update.stop_success}')
             
-        if trial_type == 'abort': print(f'adjusted time: {current_abort_duration}')
+        if trial_type == 'abort':
+            print(f'adjusted time: {stop_tracker.get_current_ssd_ms() / 1000.0}')
+
+        target_stop_trials = cfg.get("target_stop_trials")
+        stop_limit_reached = target_stop_trials is not None and stop_trial_count >= target_stop_trials
+        if trial_type == 'abort' and (stop_tracker.has_converged() or stop_limit_reached):
+            print("STOP tracker converged or target stop count reached. Stopping session early.")
+            break
 
         send_marker(outlet, f"TRIAL_END_{t+1}_{trial_type}_{trial_direction}")
 
@@ -163,6 +190,23 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
 
 
     ### end of experiment
+    if results:
+        stop_trials = [trial for trial in results if trial["trial_type"] == "abort"]
+        successful_stops = [trial for trial in stop_trials if trial.get("stop_success") is True]
+        failed_stop_rts = [trial["rt"] for trial in stop_trials if trial.get("stop_success") is False and trial.get("rt") is not None]
+        go_rts = [trial["rt"] for trial in results if trial["trial_type"] == "go" and trial.get("rt") is not None]
+
+        total_stop_trials = len(stop_trials)
+        inhibition_accuracy = (len(successful_stops) / total_stop_trials) * 100 if total_stop_trials else 0.0
+        mean_failed_stop_rt = sum(failed_stop_rts) / len(failed_stop_rts) if failed_stop_rts else float("nan")
+        mean_go_rt = sum(go_rts) / len(go_rts) if go_rts else float("nan")
+        horse_race_check = bool(mean_failed_stop_rt < mean_go_rt) if not (mean_failed_stop_rt != mean_failed_stop_rt or mean_go_rt != mean_go_rt) else False
+        final_ssd_ms = stop_tracker.get_current_ssd_ms()
+        session_valid = stop_tracker.has_converged() or (target_stop_trials is not None and stop_trial_count >= target_stop_trials)
+
+        print(f"Session Valid: {session_valid} | Final SSD Plateau: {final_ssd_ms:.1f}ms | Accuracy: {inhibition_accuracy:.1f}%")
+        print(f"Horse Race Check: {horse_race_check} | Mean Failed Stop RT: {mean_failed_stop_rt} | Mean Go RT: {mean_go_rt}")
+
     if cfg['USE_ARDUINO']:
         ard_trigger.close_board(pin=TRIGGER_PIN, board=ARDUINO_BOARD)
 
