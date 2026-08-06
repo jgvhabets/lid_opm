@@ -32,6 +32,7 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
     """
     response = None
     rt = None
+    responded = False
     abort_acc_window = []
 
     # take default go-abort time at beginning
@@ -181,7 +182,6 @@ def run_trial(screen, trial_type, cfg, clock, outlet=None,
                 np.asarray(abort_acc_window),
                 trial_direction,
             )
-            print(f"abort ACC summary: {abort_acc_summary}")
 
         if type(response) == str:
             if 'correct' in response and not 'incorrect' in response:

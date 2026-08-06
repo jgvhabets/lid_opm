@@ -104,12 +104,8 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
     else:
         TRIGGER_PIN, ARDUINO_BOARD = None, None
 
-    # create ACC inlet if we need ACC-based feedback or adaptive abort timing
-    if "abort" in trials and (cfg['check_correct_dtype'] == 'acc' or cfg.get('ADAPT_ABORT_TIME')):
-        lsl_inlet, acc_bases = create_acc_inlet()
-        print("Connected to ACC LSL stream for abort trial feedback.")
-    else:
-        lsl_inlet, acc_bases = None, None
+    # ACC setup is delayed after the waiting screen
+    lsl_inlet, acc_bases = None, None
 
     ### Waiting screen before starting task
     send_marker(outlet, f"TASK_INIT_beforeWaitScreen")
@@ -120,11 +116,13 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
 
     exp_start = time.time()  # take time after waiting screen as experiment starts
 
+    # create ACC inlet only after the user has started the task
+    if "abort" in trials and cfg['check_correct_dtype'] == 'acc' or cfg.get('ADAPT_ABORT_TIME'):
+        lsl_inlet, acc_bases = create_acc_inlet(verbose=verbose)
 
     for t, trial_type in enumerate(trials):
         # check whether time has expired
         if exp_duration and (time.time() - exp_start) >= exp_duration:
-            print("Experiment duration reached, stopping early.")
             break
         # get direction for this trial and remove it from the list (so next time it will be different, but still balanced overall)
         trial_direction = trial_directions[trial_type].pop()
@@ -156,11 +154,6 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
             move_threshold = cfg.get("move_threshold")
             abort_acc_summary = trial_data.get("abort_acc_summary")
 
-            if verbose:
-                print(f'current time: {abort_go_duration}')
-                print(f'abort ACC summary: {abort_acc_summary}')
-                print(f'move threshold: {move_threshold}')
-
             stop_update = stop_tracker.record_stop_trial_from_summary(
                 move_summary=abort_acc_summary,
                 move_threshold=move_threshold,
@@ -168,19 +161,13 @@ def run_experiment(screen, cfg, clock, outlet=None, verbose=False,):
             trial_data["next_abort_go_duration"] = stop_update.next_ssd_ms / 1000.0
             trial_data["abort_update_decision"] = stop_update.decision
             trial_data["stop_success"] = stop_update.stop_success
-
-            if verbose:
-                print(f'next time: {stop_update.next_ssd_ms / 1000.0}')
-                print(f'decision: {stop_update.decision}')
-                print(f'stop success: {stop_update.stop_success}')
-            
+          
         if trial_type == 'abort':
             print(f'adjusted time: {stop_tracker.get_current_ssd_ms() / 1000.0}')
 
         target_stop_trials = cfg.get("target_stop_trials")
         stop_limit_reached = target_stop_trials is not None and stop_trial_count >= target_stop_trials
         if trial_type == 'abort' and (stop_tracker.has_converged() or stop_limit_reached):
-            print("STOP tracker converged or target stop count reached. Stopping session early.")
             break
 
         send_marker(outlet, f"TRIAL_END_{t+1}_{trial_type}_{trial_direction}")

@@ -8,7 +8,7 @@ ACC_LSL_IDX = {'left': [9, 10, 11], 'right': [6, 7, 8]}  # example channel indic
 
 
 def create_acc_inlet(stream_name: str = 'acc', timeout: float = 5.0,
-                     max_buffer_sec=.25,) -> StreamInlet:
+                     max_buffer_sec=25,verbose:bool=False) -> StreamInlet:
     """Resolve an ACC LSL stream and return a connected StreamInlet.
 
     Call this once before starting the task loop and pass the returned
@@ -21,14 +21,25 @@ def create_acc_inlet(stream_name: str = 'acc', timeout: float = 5.0,
             "Make sure the ACC stream is broadcasting before starting the task."
         )
     
-    # print available streams
-    print("Available ACC streams:")
+# print available streams only when verbose is True
+    if verbose:
+        print("Available LSL streams:")
+
+    aux_stream = None
+
     for s in streams:
         if 'LID_MEG' in s.name() and not 'TRG' in s.name():
             aux_stream = s
-    
-    print(f'selected stream for ACC-EMG: {aux_stream.name()}')
-    print(f'sampling rate: {aux_stream.nominal_srate()} Hz')
+            break
+    if aux_stream is None:
+        available_names = ", ".join(s.name() for s in streams)
+        raise RuntimeError(
+            f"No ACC stream found. Available streams: {available_names or 'None'}."
+            "Make sure the ACC stream is broadcasting before starting the task."
+        )
+    if verbose:
+        print(f'selected stream for ACC: {aux_stream.name()}')
+        print(f'sampling rate: {aux_stream.nominal_srate()} Hz')
     
     aux_stream = StreamInlet(
         aux_stream,
@@ -37,31 +48,32 @@ def create_acc_inlet(stream_name: str = 'acc', timeout: float = 5.0,
     )
 
     # Print basic channel count
-    print(f"Number of channels: {aux_stream.info().channel_count()}")
-    print(f"Sampling rate: {aux_stream.info().nominal_srate()}")
+    if verbose:
+        print(f"Number of channels: {aux_stream.info().channel_count()}")
+        print(f"Sampling rate: {aux_stream.info().nominal_srate()}")
 
     # get baseline for acc hands
     base_left, base_right = get_acc_baselines(aux_stream)
-    print(f"ACC baseline - Left hand: {base_left:.2f}, Right hand: {base_right:.2f}")
+    if verbose:
+        print(f"ACC baseline - Left hand: {base_left:.2f}, Right hand: {base_right:.2f}")
     acc_bases = {'left': base_left, 'right': base_right}
 
     return aux_stream, acc_bases
 
 
-import matplotlib.pyplot as plt
 
-def get_acc_baselines(inlet: StreamInlet, duration_sec: float = 10.0,):
+def get_acc_baselines(inlet: StreamInlet, duration_sec: float = 10.0, verbose = False):
 
     ch_left = ACC_LSL_IDX['left']
     ch_right = ACC_LSL_IDX['right']
 
-    print(f"Collecting {duration_sec} seconds of baseline ACC data for left and right hands...")
+    if verbose:
+        print(f"Collecting {duration_sec} seconds of baseline ACC data for left and right hands...")
     start_time = time.time()
 
     left_samples = []
     right_samples = []
 
-    all_samples = []
 
     while time.time() - start_time < duration_sec:
         samples, timestamps = inlet.pull_chunk(timeout=0.1, max_samples=250)
@@ -88,8 +100,13 @@ def get_acc_baselines(inlet: StreamInlet, duration_sec: float = 10.0,):
     # plt.legend()
     # plt.show()
 
+    if not left_samples or not right_samples:
+        if verbose:
+            print("No ACC samples collected during baseline period; using fallback baseline thresholds.")
+        return 1.0, 1.0
+
     # Compute baseline means
-    baseline_left = np.mean(left_samples) + (np.std(left_samples) * 4) 
+    baseline_left = np.mean(left_samples) + (np.std(left_samples) * 4)
     baseline_right = np.mean(right_samples) + (np.std(right_samples) * 4)
 
     return baseline_left, baseline_right
@@ -118,6 +135,7 @@ def calibrate_first_trial_threshold(
     stim_direction: str,
     calibration_ms: float = 200.0,
     max_samples: int = 250,
+    verbose: bool = False
 ) -> float:
     """Calibrate the movement threshold from a short fixation baseline.
 
@@ -159,6 +177,7 @@ def check_acc_abort_response(
     trial_type: str,
     abort_intime: bool,
     window_ms: float = 100,
+    verbose: bool = False
 ):
     """
     Pull buffered ACC samples and detect movement on the stimulated body side.
@@ -194,7 +213,6 @@ def check_acc_abort_response(
     -------
     response, rt, responded  (same contract as check_response_keys)
     """
-    print(f'start ACCresponse')
 
     if responded:
         return response, rt, responded
@@ -202,7 +220,6 @@ def check_acc_abort_response(
     # non-blocking pull of all buffered samples
     samples, timestamps = inlet.pull_chunk(timeout=0.0, max_samples=250)
     if not samples:
-        print("No ACC samples received.")
         return response, rt, responded
 
     samples    = np.array(samples)     # (n_samples, n_channels)
@@ -219,7 +236,6 @@ def check_acc_abort_response(
     samples = recent[:, ACC_LSL_IDX[stim_direction]]
     samples = samples - np.mean(samples, axis=0)  # detrend by removing mean of raw values (pos and neg)
     rms = np.sqrt(np.mean(samples ** 2))
-    print(f'RMS ACC: {rms:.2f}, from shape: {samples.shape}, using baseline: {acc_bases[stim_direction]:.2f}')
 
     if rms > acc_bases[stim_direction] * 6:  # example threshold: 1.5x baseline; adjust as needed
         responded = True
@@ -235,6 +251,9 @@ def check_acc_abort_response(
             else:
                 response = 'incorrectOvertime'
     
-        print(f"ACC response detected ({response})! RMS: {rms:.2f}, RT: {rt:.3f} s")
+        if verbose:
+            print(f"ACC response detected ({response})! RMS: {rms:.2f}, RT: {rt:.3f} s")
 
     return response, rt, responded
+
+### CHECK IF IT'S ALL HARD CODED
